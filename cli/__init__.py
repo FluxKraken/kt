@@ -2,6 +2,7 @@ import click
 from cli.db.session import init_db
 
 @click.group()
+@click.version_option()
 def kt():
     """Kt Template System"""
     init_db()

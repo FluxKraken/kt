@@ -16,3 +16,7 @@ wheels/
 
 **/.DS_Store
 **/Thumbs.db
+
+# Test artifacts
+test_output/
+kt.db
