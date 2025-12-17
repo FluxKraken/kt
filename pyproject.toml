@@ -1,0 +1,23 @@
+[project]
+name = "kt"
+version = "0.1.0"
+description = "Kt Template System"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "jinja2",
+    "click",
+    "click_aliases",
+    "sqlmodel",
+]
+
+[project.scripts]
+kt = "cli:kt"
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "cli"
+module-root = ""
