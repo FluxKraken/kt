@@ -15,8 +15,7 @@
 Using `uv`:
 
 ```bash
-uv sync
-uv run kt init
+uv tool install https://github.com/FluxKraken/kt.git
 ```
 
 ## Quick Start
