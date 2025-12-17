@@ -5,10 +5,14 @@ description = "Kt Template System"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "python-dotenv",
+    "python-dateutil",
+    "lupa",
     "jinja2",
     "click",
     "click_aliases",
     "sqlmodel",
+    "rich"
 ]
 
 [project.scripts]
