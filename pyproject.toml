@@ -12,7 +12,8 @@ dependencies = [
     "click",
     "click_aliases",
     "sqlmodel",
-    "rich"
+    "rich",
+    "toml"
 ]
 
 [project.scripts]
