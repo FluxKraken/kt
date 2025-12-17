@@ -123,17 +123,15 @@ def delete_template(name, project):
 @template.command("render")
 @click.argument("name")
 @click.option("--project", help="Project context")
-@click.option("--output", help="Output file path", required=True)
+@click.option("--output", help="Output file path")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
-def render_template(name, project, output, overwrite):
+@click.option("--config", help="TOML config file")
+@click.option("--gen-config", help="Generate config file skeleton path")
+def render_template(name, project, output, overwrite, config, gen_config):
     """Render a template to a file"""
     import json
-    # For now, we don't have a way to pass context easily via CLI arg without complex parsing,
-    # so we will render with empty context or simple env vars? 
-    # User requirement just says "render from provided list of values" but the command signature is limited.
-    # The requirement primarily focuses on recipes using templates. 
-    # This command might be for testing or simple usage. 
-    # Let's assume standard jinja rendering.
+    import toml
+    from jinja2 import Environment, meta
     
     with get_session() as session:
         project_id = None
@@ -149,13 +147,68 @@ def render_template(name, project, output, overwrite):
             console.print(f"[red]Template '{name}' not found.[/red]")
             return
 
+        # Parse template to find variables
+        env = Environment()
+        try:
+            ast = env.parse(tmpl.content)
+            all_vars = meta.find_undeclared_variables(ast)
+        except Exception as e:
+            console.print(f"[red]Error parsing template: {e}[/red]")
+            return
+
+        # Gen Config Mode
+        if gen_config:
+            if os.path.exists(gen_config) and not overwrite:
+                console.print(f"[red]Output file '{gen_config}' exists. Use --overwrite.[/red]")
+                return
+            
+            skeleton = {var: "" for var in all_vars}
+            with open(gen_config, 'w') as f:
+                toml.dump(skeleton, f)
+            console.print(f"[green]Config skeleton generated at '{gen_config}'.[/green]")
+            return
+
+        # Render Mode requirements
+        if not output:
+             console.print("[red]Error: Missing '--output' (or '--gen-config')[/red]")
+             return
+
         if os.path.exists(output) and not overwrite:
             console.print(f"[red]Output file '{output}' exists. Use --overwrite.[/red]")
             return
             
+        # Load Context
+        context = {}
+        if config:
+            if not os.path.exists(config):
+                console.print(f"[red]Config file '{config}' not found.[/red]")
+                return
+            context = toml.load(config)
+            
+        # Identify missing variables
+        missing = [v for v in all_vars if v not in context]
+        
+        if missing:
+            console.print(f"[yellow]Missing variables: {', '.join(missing)}[/yellow]")
+            # Create temp toml for prompting
+            prompt_data = {var: "" for var in missing}
+            header = f"# Fill in missing variables for template '{name}'\n"
+            toml_str = toml.dumps(prompt_data)
+            
+            new_toml = click.edit(header + toml_str, extension=".toml")
+            if new_toml:
+                 try:
+                     new_data = toml.loads(new_toml)
+                     context.update(new_data)
+                 except Exception as e:
+                     console.print(f"[red]Error parsing input: {e}[/red]")
+                     return
+            else:
+                 console.print("[yellow]No input provided. Using empty strings for missing vars.[/yellow]")
+                 for var in missing:
+                     context[var] = ""
+
         try:
-            # We will use environment variables as context for now for direct render
-            context = dict(os.environ)
             rendered = JinjaTemplate(tmpl.content).render(context)
             
             with open(output, 'w') as f:

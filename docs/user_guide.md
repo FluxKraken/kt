@@ -54,6 +54,10 @@ kt template list --project [name]
 kt template add [name] --project [name] # Opens editor
 kt template import [path] --project [name]
 kt template render [name] --project [name] --output [path]
+# With config
+kt template render [name] --project [name] --config config.toml --output [path]
+# Generate config skeleton
+kt template render [name] --project [name] --gen-config skeleton.toml
 ```
 
 #### Assets
