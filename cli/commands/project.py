@@ -83,10 +83,13 @@ def delete_project(name, recursive):
 @click.argument("path")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing project")
 def import_project(path, overwrite):
-    """Import a project from a bundle (.project)"""
-    from cli.utils.bundler import extract_bundle
+    """Import a project from a bundle (.project) or directory"""
+    from cli.utils.bundler import extract_bundle, import_project_from_dir
     try:
-        extract_bundle(path, overwrite)
+        if os.path.isdir(path):
+            import_project_from_dir(path, overwrite)
+        else:
+            extract_bundle(path, overwrite)
         console.print(f"[green]Project imported from '{path}'.[/green]")
     except Exception as e:
         console.print(f"[red]Import failed: {e}[/red]")

@@ -73,6 +73,98 @@ def create_bundle(project_name: str, output_path: str, overwrite: bool = False):
             with tarfile.open(output_path, "w:gz") as tar:
                 tar.add(tmpdir, arcname=os.path.basename(project_name))
 
+def import_project_from_dir(root_dir: str, overwrite: bool = False):
+    """
+    Import a project from a directory structure.
+    """
+    project_json_path = os.path.join(root_dir, "project.json")
+    if not os.path.exists(project_json_path):
+        raise ValueError(f"Invalid project directory: 'project.json' not found in {root_dir}")
+
+    with open(project_json_path, 'r') as f:
+        meta = json.load(f)
+        
+    project_name = meta['name']
+    
+    with get_session() as session:
+        # Check project existence
+        existing = session.exec(select(Project).where(Project.name == project_name)).first()
+        if existing:
+            if not overwrite:
+                raise FileExistsError(f"Project '{project_name}' already exists.")
+        else:
+            existing = Project(name=project_name)
+            session.add(existing)
+            session.commit()
+            # Reload to get ID
+            existing = session.exec(select(Project).where(Project.name == project_name)).first()
+            
+        project_id = existing.id
+        
+        # Import Templates
+        tmpl_dir = os.path.join(root_dir, "templates")
+        if os.path.exists(tmpl_dir):
+            for fname in os.listdir(tmpl_dir):
+                fpath = os.path.join(tmpl_dir, fname)
+                if os.path.isdir(fpath): continue
+                with open(fpath, 'r') as f:
+                    content = f.read()
+                
+                # Strip .j2 for name if present
+                tmpl_name = fname[:-3] if fname.endswith(".j2") else fname
+                
+                # Update or Create
+                t = session.exec(select(Template).where(Template.name == tmpl_name).where(Template.project_id == project_id)).first()
+                if t:
+                    if overwrite:
+                        t.content = content
+                        session.add(t)
+                else:
+                    t = Template(name=tmpl_name, content=content, project_id=project_id)
+                    session.add(t)
+                    
+        # Import Recipes
+        recipes_dir = os.path.join(root_dir, "recipes")
+        if os.path.exists(recipes_dir):
+            for fname in os.listdir(recipes_dir):
+                fpath = os.path.join(recipes_dir, fname)
+                if os.path.isdir(fpath): continue
+                with open(fpath, 'r') as f:
+                    content = f.read()
+                
+                # Strip .lua for name if we added it
+                rec_name = fname[:-4] if fname.endswith(".lua") else fname
+                
+                r = session.exec(select(Recipe).where(Recipe.name == rec_name).where(Recipe.project_id == project_id)).first()
+                if r:
+                    if overwrite:
+                        r.content = content
+                        session.add(r)
+                else:
+                    r = Recipe(name=rec_name, content=content, project_id=project_id)
+                    session.add(r)
+                    
+        # Import Assets
+        assets_dir = os.path.join(root_dir, "assets")
+        if os.path.exists(assets_dir):
+            for fname in os.listdir(assets_dir):
+                fpath = os.path.join(assets_dir, fname)
+                if os.path.isdir(fpath): continue
+                with open(fpath, 'rb') as f:
+                     content = f.read()
+                
+                a = session.exec(select(Asset).where(Asset.name == fname).where(Asset.project_id == project_id)).first()
+                if a:
+                    if overwrite:
+                        a.content = content
+                        session.add(a)
+                else:
+                    # source_path is lost in bundle, set to "imported"
+                    a = Asset(name=fname, source_path="imported", content=content, project_id=project_id)
+                    session.add(a)
+                    
+        session.commit()
+
 def extract_bundle(bundle_path: str, overwrite: bool = False):
     """
     Import a project from a .project tarball.
@@ -101,92 +193,7 @@ def extract_bundle(bundle_path: str, overwrite: bool = False):
              else:
                  raise ValueError("Invalid bundle: project.json not found.")
                  
-        with open(os.path.join(root_dir, "project.json"), 'r') as f:
-            meta = json.load(f)
-            
-        project_name = meta['name']
-        
-        with get_session() as session:
-            # Check project existence
-            existing = session.exec(select(Project).where(Project.name == project_name)).first()
-            if existing:
-                if not overwrite:
-                    raise FileExistsError(f"Project '{project_name}' already exists.")
-                # We reuse existing project ID? or delete/recreate?
-                # User said "overwrite".
-                # Let's keep ID but clear resources?
-                # Actually, simpler to verify logic: 
-                # If "import path --overwrite", we might merge or replace?
-                pass
-            else:
-                existing = Project(name=project_name)
-                session.add(existing)
-                session.commit()
-                # Reload to get ID
-                existing = session.exec(select(Project).where(Project.name == project_name)).first()
-                
-            project_id = existing.id
-            
-            # Import Templates
-            tmpl_dir = os.path.join(root_dir, "templates")
-            if os.path.exists(tmpl_dir):
-                for fname in os.listdir(tmpl_dir):
-                    fpath = os.path.join(tmpl_dir, fname)
-                    with open(fpath, 'r') as f:
-                        content = f.read()
-                    
-                    # Strip .j2 for name if present
-                    tmpl_name = fname[:-3] if fname.endswith(".j2") else fname
-                    
-                    # Update or Create
-                    t = session.exec(select(Template).where(Template.name == tmpl_name).where(Template.project_id == project_id)).first()
-                    if t:
-                        if overwrite:
-                            t.content = content
-                            session.add(t)
-                    else:
-                        t = Template(name=tmpl_name, content=content, project_id=project_id)
-                        session.add(t)
-                        
-            # Import Recipes
-            recipes_dir = os.path.join(root_dir, "recipes")
-            if os.path.exists(recipes_dir):
-                for fname in os.listdir(recipes_dir):
-                    fpath = os.path.join(recipes_dir, fname)
-                    with open(fpath, 'r') as f:
-                        content = f.read()
-                    
-                    # Strip .lua for name if we added it
-                    rec_name = fname[:-4] if fname.endswith(".lua") else fname
-                    
-                    r = session.exec(select(Recipe).where(Recipe.name == rec_name).where(Recipe.project_id == project_id)).first()
-                    if r:
-                        if overwrite:
-                            r.content = content
-                            session.add(r)
-                    else:
-                        r = Recipe(name=rec_name, content=content, project_id=project_id)
-                        session.add(r)
-                        
-            # Import Assets
-            assets_dir = os.path.join(root_dir, "assets")
-            if os.path.exists(assets_dir):
-                for fname in os.listdir(assets_dir):
-                    fpath = os.path.join(assets_dir, fname)
-                    with open(fpath, 'rb') as f:
-                         content = f.read()
-                    
-                    a = session.exec(select(Asset).where(Asset.name == fname).where(Asset.project_id == project_id)).first()
-                    if a:
-                        if overwrite:
-                            a.content = content
-                            session.add(a)
-                    else:
-                        # source_path is lost in bundle, set to "imported"
-                        a = Asset(name=fname, source_path="imported", content=content, project_id=project_id)
-                        session.add(a)
-                        
-            session.commit()
+        import_project_from_dir(root_dir, overwrite)
 
 def expand_bundle_to_path(bundle_path: str, extract_path: str, overwrite: bool = False):
     """
