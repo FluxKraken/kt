@@ -3,6 +3,8 @@ import json
 import tarfile
 import tempfile
 import shutil
+import subprocess
+import glob
 from cli.db.session import get_session
 from cli.db.models import Project, Template, Recipe, Asset
 from sqlmodel import select
@@ -308,3 +310,34 @@ def init_bundle_structure(target_path: str):
     if not os.path.exists(example_asset):
         with open(example_asset, 'w') as f:
             f.write("This is an example asset for your bundle project.\n")
+
+def import_project_from_git(uri: str, overwrite: bool = False):
+    """
+    Import a project from a Git repository.
+    Clones the repo to a temporary directory, checks for a .project file,
+    and imports accordingly.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Clone the repository
+        try:
+            subprocess.run(["git", "clone", uri, "."], cwd=tmpdir, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to clone repository: {e.stderr}")
+
+        # Search for .project file in the root
+        project_bundles = glob.glob(os.path.join(tmpdir, "*.project"))
+        
+        if project_bundles:
+            # If multiple bundles, just take the first one or logic it? 
+            # Prompt says "If the repo contains a .project file in the root, the project should be imported from that archive."
+            extract_bundle(project_bundles[0], overwrite)
+        else:
+            # Check for regular project structure (project.json)
+            if os.path.exists(os.path.join(tmpdir, "project.json")):
+                import_project_from_dir(tmpdir, overwrite)
+            else:
+                # If neither, maybe it's just a folder that needs to be imported as is?
+                # The prompt says: "If no .project archive is present, then the bundler should attempt to import the project as if it was from a folder."
+                # import_project_from_dir raises ValueError if project.json is missing.
+                # If the user wants to import from a folder, they probably expect project.json to be there.
+                import_project_from_dir(tmpdir, overwrite)
