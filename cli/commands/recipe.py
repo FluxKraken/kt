@@ -227,12 +227,32 @@ def render_recipe(name, project, config, output):
             engine.execute(rec.content)
             
             if mode == "GENERATE_CONFIG":
-                # Filter context to only show what was prompted/declared?
-                # For now dump whole context or just what's in collected_prompts logic (if we tracked it)
-                # But 'actions.prompt' populates context with defaults. 
-                # Let's dump context.
+                # Filter context to only show what was explicitly prompted
+                # collected_prompts has the structure of defaults.
+                # We want to use values from engine.context if they exist, but only keys from collected_prompts.
+                
+                final_output = {}
+                
+                def deep_filter(mask, source):
+                    result = {}
+                    for k, v in mask.items():
+                        if isinstance(v, dict):
+                            if k in source and isinstance(source[k], dict):
+                                nested = deep_filter(v, source[k])
+                                if nested:
+                                    result[k] = nested
+                        else:
+                            # Leaf
+                            if k in source:
+                                result[k] = source[k]
+                            else:
+                                result[k] = v # Should depend on mask value or source? Mask value is default.
+                    return result
+
+                final_output = deep_filter(engine.actions.collected_prompts, engine.context)
+
                 with open(output, 'w') as f:
-                    toml.dump(engine.context, f)
+                    toml.dump(final_output, f)
                 console.print(f"[green]Config generated at '{output}'[/green]")
             else:
                  console.print(f"[green]Recipe '{name}' executed.[/green]")

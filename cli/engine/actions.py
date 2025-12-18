@@ -94,49 +94,77 @@ class Actions:
         # args: dict of variable definitions
         schema = dict(args)
         
-        # If we are in GENERATE_CONFIG mode, we just collect the schema and defaults
-        if self.engine.mode == "GENERATE_CONFIG":
-            # Just accumulate defaults into context so script can continue conceptually
-            # And store schema for export
-            for section, fields in schema.items():
-                if section not in self.engine.context:
-                    self.engine.context[section] = {}
-                self.collected_prompts[section] = fields
+        # Recursive helper to process schema
+        def process_node(node_schema, current_path=None):
+            result = {}
+            has_prompt = False
+            
+            node_dict = dict(node_schema)
+            for key, val in node_dict.items():
+                if key == "_comment": continue
                 
-                fields_dict = dict(fields)
-                for field_name, field_def in fields_dict.items():
-                    if field_name == "_comment": continue
-                    field_def_dict = dict(field_def)
-                    default = field_def_dict.get('default')
-                    self.engine.context[section][field_name] = default
-            return
-
-        # If EXECUTE mode
-        # Check if we already have values in context (e.g. loaded from config)
-        # We assume context is already populated with config if provided.
-        # But we might need to prompt for missing values.
-        
-        # Simplified: If any key in this prompt block is MISSING from context, trigger prompt.
-        # BUT user requirement says: "generate a temporary toml document and use click to open an editor"
-        
-        # First, generate defaults dict
-        defaults_data = {}
-        needs_prompt = False
-        
-        for section, fields in schema.items():
-            defaults_data[section] = {}
-            fields_dict = dict(fields)
-            for field_name, field_def in fields_dict.items():
-                if field_name == "_comment": continue
-                field_def_dict = dict(field_def)
+                # Check if this is a leaf node (has 'default')
+                # But wait, what if a section has a 'default' key?
+                # The schema definition says:
+                # key = { default = "val" }
+                # So if 'val' is a dict and has 'default', it's a leaf.
+                # If 'val' is a dict and NO 'default', it's a nested section.
                 
-                # Check if exists in context
-                curr_val = self._resolve_var(f"{section}.{field_name}")
-                if curr_val is None:
-                    needs_prompt = True
-                    defaults_data[section][field_name] = field_def_dict.get('default')
+                # Converting val to dict to check
+                val_dict = dict(val) if hasattr(val, 'items') or hasattr(val, 'keys') else None
+                
+                if val_dict is not None and 'default' in val_dict:
+                    # Leaf node
+                    full_path = f"{current_path}.{key}" if current_path else key
+                    
+                    # Logic:
+                    # 1. Check if value exists in context
+                    curr_val = self._resolve_var(full_path)
+                    
+                    if curr_val is None:
+                        has_prompt = True
+                        result[key] = val_dict.get('default')
+                    else:
+                        result[key] = curr_val
+                        
+                elif val_dict is not None:
+                    # Nested section
+                    new_path = f"{current_path}.{key}" if current_path else key
+                    child_result, child_has_prompt = process_node(val_dict, new_path)
+                    if child_has_prompt:
+                        has_prompt = True
+                    result[key] = child_result
                 else:
-                    defaults_data[section][field_name] = curr_val
+                    # Malformed or unexpected structure? 
+                    # Assuming everything else is ignored or treated as is?
+                    # For now, let's skip
+                    pass
+            
+            return result, has_prompt
+
+        if self.engine.mode == "GENERATE_CONFIG":
+            # Just accumulate defaults into context
+             defaults, _ = process_node(schema)
+             
+             # We need to merge defaults deep into context AND collected_prompts
+             def deep_merge(target, source):
+                 for k, v in source.items():
+                     if isinstance(v, dict):
+                         if k not in target: target[k] = {}
+                         if isinstance(target[k], dict):
+                             deep_merge(target[k], v)
+                         else:
+                             # Conflict? Overwrite?
+                             target[k] = v
+                     else:
+                         target[k] = v
+                         
+             deep_merge(self.engine.context, defaults)
+             deep_merge(self.collected_prompts, defaults)
+             return
+
+        # EXECUTE MODE
+        defaults_data, needs_prompt = process_node(schema)
 
         if needs_prompt:
              # Create temp toml
@@ -147,20 +175,32 @@ class Actions:
              if new_toml:
                  new_data = toml.loads(new_toml)
                  # Merge back into context
-                 for k, v in new_data.items():
-                     if k not in self.engine.context:
-                         self.engine.context[k] = {}
-                     self.engine.context[k].update(v)
+                 def deep_merge(target, source):
+                     for k, v in source.items():
+                         if isinstance(v, dict):
+                             if k not in target: target[k] = {}
+                             if isinstance(target[k], dict):
+                                 deep_merge(target[k], v)
+                             else:
+                                 target[k] = v
+                         else:
+                             target[k] = v
+                 deep_merge(self.engine.context, new_data)
              else:
                  console.print("[yellow]No input provided, using defaults.[/yellow]")
                  # Merge defaults
-                 for k, v in defaults_data.items():
-                     if k not in self.engine.context:
-                         self.engine.context[k] = {}
-                     self.engine.context[k].update(v)
+                 def deep_merge(target, source):
+                     for k, v in source.items():
+                         if isinstance(v, dict):
+                             if k not in target: target[k] = {}
+                             if isinstance(target[k], dict):
+                                 deep_merge(target[k], v)
+                             else:
+                                 target[k] = v
+                         else:
+                             target[k] = v
+                 deep_merge(self.engine.context, defaults_data)
         else:
-            # Maybe update context with found values to ensure consistency?
-            # It's already in context.
             pass
 
     def template(self, name, args):
