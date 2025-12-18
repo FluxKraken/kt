@@ -135,14 +135,17 @@ def extract_bundle(bundle_path: str, overwrite: bool = False):
                     with open(fpath, 'r') as f:
                         content = f.read()
                     
+                    # Strip .j2 for name if present
+                    tmpl_name = fname[:-3] if fname.endswith(".j2") else fname
+                    
                     # Update or Create
-                    t = session.exec(select(Template).where(Template.name == fname).where(Template.project_id == project_id)).first()
+                    t = session.exec(select(Template).where(Template.name == tmpl_name).where(Template.project_id == project_id)).first()
                     if t:
                         if overwrite:
                             t.content = content
                             session.add(t)
                     else:
-                        t = Template(name=fname, content=content, project_id=project_id)
+                        t = Template(name=tmpl_name, content=content, project_id=project_id)
                         session.add(t)
                         
             # Import Recipes
