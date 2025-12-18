@@ -9,6 +9,9 @@
 - **Interactive Configuration**: Generate configuration files from recipes, edit them, and then apply.
 - **Bundling**: Export entire project setups as single `.project` files for easy sharing.
 - **Asset Management**: Handle binary assets (images, fonts) alongside text templates.
+- **Shell Command Extension**: Execute shell commands directly within templates using `{>command<}` syntax.
+
+> [!WARNING] > **Security Note**: The shell command extension executes commands with `shell=True`. Only use this feature with templates from trusted sources, as it can be used to execute arbitrary code on the host system.
 
 ## Installation
 

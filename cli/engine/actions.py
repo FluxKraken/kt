@@ -204,7 +204,8 @@ class Actions:
             
         # Render
         try:
-             rendered = JinjaTemplate(template_content).render(context)
+             from cli.engine.jinja_utils import render_template_with_shell
+             rendered = render_template_with_shell(template_content, context)
              
              # Ensure directory exists
              out_dir = os.path.dirname(output)

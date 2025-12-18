@@ -60,6 +60,24 @@ kt template render [name] --project [name] --config config.toml --output [path]
 kt template render [name] --project [name] --gen-config skeleton.toml
 ```
 
+#### Shell Command Extension
+
+`kt` extends Jinja2 with the ability to execute shell commands and substitute their output. Use the `{>command<}` syntax.
+
+Example:
+
+```jinja
+SECRET_KEY='{>openssl rand -base64 32<}'
+```
+
+You can also use Jinja variables within the shell command:
+
+```jinja
+DYNAMIC_INFO='{>echo "Generated for {{user}}"<}'
+```
+
+> [!CAUTION] > **Security Warning**: Shell commands are executed with full shell privileges. Never render untrusted templates.
+
 #### Assets
 
 Static files (logos, binaries).

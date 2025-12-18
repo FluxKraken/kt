@@ -131,7 +131,13 @@ def render_template(name, project, output, overwrite, config, gen_config):
     """Render a template to a file"""
     import json
     import toml
-    from jinja2 import Environment, meta
+    from jinja2 import Environment
+    from cli.engine.jinja_utils import (
+        extract_nested_variables, 
+        render_template_with_shell,
+        merge_recursive,
+        check_missing
+    )
     
     with get_session() as session:
         project_id = None
@@ -147,11 +153,9 @@ def render_template(name, project, output, overwrite, config, gen_config):
             console.print(f"[red]Template '{name}' not found.[/red]")
             return
 
-        # Parse template to find variables
-        env = Environment()
+        # Parse template to find variables (including nested ones)
         try:
-            ast = env.parse(tmpl.content)
-            all_vars = meta.find_undeclared_variables(ast)
+            skeleton = extract_nested_variables(tmpl.content)
         except Exception as e:
             console.print(f"[red]Error parsing template: {e}[/red]")
             return
@@ -162,7 +166,6 @@ def render_template(name, project, output, overwrite, config, gen_config):
                 console.print(f"[red]Output file '{gen_config}' exists. Use --overwrite.[/red]")
                 return
             
-            skeleton = {var: "" for var in all_vars}
             with open(gen_config, 'w') as f:
                 toml.dump(skeleton, f)
             console.print(f"[green]Config skeleton generated at '{gen_config}'.[/green]")
@@ -185,31 +188,38 @@ def render_template(name, project, output, overwrite, config, gen_config):
                 return
             context = toml.load(config)
             
-        # Identify missing variables
-        missing = [v for v in all_vars if v not in context]
+        # Identify missing variables (at top level for simple check, but we'll prompt for all if any missing)
+        # For simplicity, we check if any keys in skeleton are missing in context.
+        # However, it's better to just merge context into skeleton and see what's left as empty.
         
-        if missing:
-            console.print(f"[yellow]Missing variables: {', '.join(missing)}[/yellow]")
-            # Create temp toml for prompting
-            prompt_data = {var: "" for var in missing}
-            header = f"# Fill in missing variables for template '{name}'\n"
-            toml_str = toml.dumps(prompt_data)
-            
-            new_toml = click.edit(header + toml_str, extension=".toml")
-            if new_toml:
-                 try:
-                     new_data = toml.loads(new_toml)
-                     context.update(new_data)
-                 except Exception as e:
-                     console.print(f"[red]Error parsing input: {e}[/red]")
-                     return
-            else:
-                 console.print("[yellow]No input provided. Using empty strings for missing vars.[/yellow]")
-                 for var in missing:
-                     context[var] = ""
+        if skeleton:
+             # Check if we have all variables
+             missing_any = check_missing(skeleton, context)
+
+             if missing_any:
+                console.print("[yellow]Template variables are missing. Opening editor...[/yellow]")
+                
+                # Merge existing context into skeleton to show current values
+                prompt_data = skeleton.copy()
+                merge_recursive(prompt_data, context)
+                
+                header = f"# Fill in missing variables for template '{name}'\n"
+                toml_str = toml.dumps(prompt_data)
+                
+                new_toml = click.edit(header + toml_str, extension=".toml")
+                if new_toml is None:
+                    console.print("[red]Render cancelled by user.[/red]")
+                    return
+                
+                try:
+                    new_data = toml.loads(new_toml)
+                    merge_recursive(context, new_data)
+                except Exception as e:
+                    console.print(f"[red]Error parsing input: {e}[/red]")
+                    return
 
         try:
-            rendered = JinjaTemplate(tmpl.content).render(context)
+            rendered = render_template_with_shell(tmpl.content, context)
             
             with open(output, 'w') as f:
                 f.write(rendered)
