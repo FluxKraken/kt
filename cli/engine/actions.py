@@ -337,3 +337,52 @@ class Actions:
             self.engine.context[store] = response
             
         return response
+
+    def touch(self, raw_path, options=None):
+        """Create a file with optional content"""
+        if self.engine.mode == "GENERATE_CONFIG": return
+
+        path = self.f(raw_path)
+        opts = dict(options) if options else {}
+        content = opts.get("content", "")
+        if content:
+            content = self.f(content)
+        overwrite = opts.get("overwrite", False)
+
+        # Ensure directory exists
+        out_dir = os.path.dirname(path)
+        if out_dir and not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+
+        if os.path.exists(path) and not overwrite:
+            console.print(f"[yellow]Skipping touch '{path}', exists.[/yellow]")
+            return
+
+        with open(path, 'w') as f:
+            f.write(content)
+        console.print(f"[green]Touched {path}[/green]")
+
+    def mkdir(self, raw_path, options=None):
+        """Create a directory"""
+        if self.engine.mode == "GENERATE_CONFIG": return
+
+        path = self.f(raw_path)
+        opts = dict(options) if options else {}
+        parents = opts.get("parents", False)
+
+        if os.path.exists(path):
+            if os.path.isdir(path):
+                # Already exists, nothing to do
+                return
+            else:
+                console.print(f"[red]Cannot create directory '{path}', a file exists at this path.[/red]")
+                return
+
+        try:
+            if parents:
+                os.makedirs(path, exist_ok=True)
+            else:
+                os.mkdir(path)
+            console.print(f"[green]Created directory {path}[/green]")
+        except Exception as e:
+            console.print(f"[red]Error creating directory {path}: {e}[/red]")

@@ -25,6 +25,8 @@ class RecipeEngine:
         r.command = self.actions.command
         r.run = self.actions.run
         r.gate = self.actions.gate
+        r.touch = self.actions.touch
+        r.mkdir = self.actions.mkdir
         r.f = self.actions.f
         r.ref = self.actions.ref
         r.splice = self.actions.splice
