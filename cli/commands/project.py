@@ -1,4 +1,6 @@
 import click
+import os
+
 from rich.console import Console
 from rich.table import Table
 from sqlmodel import select, delete
@@ -91,10 +93,13 @@ def import_project(path, overwrite):
 
 @project.command("export")
 @click.argument("name")
-@click.option("--output", required=True, help="Output file path (.project)")
+@click.option("--output", help="Output file path (.project)")
 @click.option("--overwrite", is_flag=True, help="Overwrite existing file")
 def export_project(name, output, overwrite):
     """Export a project to a bundle"""
+    if not output:
+        output = os.path.join(os.getcwd(), f"{name}.project")
+        
     from cli.utils.bundler import create_bundle
     try:
         create_bundle(name, output, overwrite)
