@@ -18,8 +18,10 @@ from cli.commands.project import project
 from cli.commands.template import template
 from cli.commands.asset import asset
 from cli.commands.recipe import recipe
+from cli.commands.bundle import bundle
 
 kt.add_command(project)
 kt.add_command(template)
 kt.add_command(asset)
 kt.add_command(recipe)
+kt.add_command(bundle)

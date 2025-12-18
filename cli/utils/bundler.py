@@ -184,3 +184,117 @@ def extract_bundle(bundle_path: str, overwrite: bool = False):
                         session.add(a)
                         
             session.commit()
+
+def expand_bundle_to_path(bundle_path: str, extract_path: str, overwrite: bool = False):
+    """
+    Extract a .project tarball to a specified path.
+    """
+    if not os.path.exists(bundle_path):
+        raise FileNotFoundError(f"Bundle '{bundle_path}' not found.")
+        
+    if not os.path.exists(extract_path):
+        os.makedirs(extract_path)
+        
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with tarfile.open(bundle_path, "r:gz") as tar:
+            tar.extractall(path=tmpdir)
+            
+        # Find root folder (likely named after project)
+        root_dir = None
+        for item in os.listdir(tmpdir):
+            if os.path.isdir(os.path.join(tmpdir, item)):
+                if os.path.exists(os.path.join(tmpdir, item, "project.json")):
+                    root_dir = os.path.join(tmpdir, item)
+                    break
+        
+        if not root_dir:
+             if os.path.exists(os.path.join(tmpdir, "project.json")):
+                 root_dir = tmpdir
+             else:
+                 raise ValueError("Invalid bundle: project.json not found.")
+                 
+        # Copy contents to extract_path
+        for item in os.listdir(root_dir):
+            s = os.path.join(root_dir, item)
+            d = os.path.join(extract_path, item)
+            if os.path.exists(d):
+                if not overwrite:
+                    raise FileExistsError(f"File '{d}' already exists. Use --overwrite to replace.")
+                if os.path.isdir(d):
+                    shutil.rmtree(d)
+                else:
+                    os.remove(d)
+            
+            if os.path.isdir(s):
+                shutil.copytree(s, d)
+            else:
+                shutil.copy2(s, d)
+
+def bundle_path_to_archive(source_path: str, output_path: str, overwrite: bool = False):
+    """
+    Create a .project tarball from a directory.
+    Ignores .git, README.md, .gitignore at the root.
+    """
+    if not os.path.exists(source_path):
+        raise FileNotFoundError(f"Source path '{source_path}' not found.")
+        
+    if not os.path.exists(os.path.join(source_path, "project.json")):
+        raise ValueError(f"Source path '{source_path}' does not contain 'project.json'. Not a project.")
+        
+    if os.path.exists(output_path) and not overwrite:
+        raise FileExistsError(f"Output file '{output_path}' exists. Use --overwrite to replace.")
+        
+    ignore_list = {".git", "README.md", ".gitignore"}
+    
+    # We want the archive to have a root folder named after the project
+    with open(os.path.join(source_path, "project.json"), 'r') as f:
+        meta = json.load(f)
+    project_name = meta.get("name", os.path.basename(os.path.abspath(source_path)))
+    
+    with tarfile.open(output_path, "w:gz") as tar:
+        for item in os.listdir(source_path):
+            if item in ignore_list:
+                continue
+            
+            s = os.path.join(source_path, item)
+            # We want to add it under a folder named project_name
+            tar.add(s, arcname=os.path.join(project_name, item))
+
+def init_bundle_structure(target_path: str):
+    """
+    Initialize a project structure with example files.
+    """
+    if not os.path.exists(target_path):
+        os.makedirs(target_path)
+        
+    project_name = os.path.basename(os.path.abspath(target_path))
+    if not project_name:
+        project_name = "new_project"
+        
+    # project.json
+    proj_json_path = os.path.join(target_path, "project.json")
+    if not os.path.exists(proj_json_path):
+        with open(proj_json_path, 'w') as f:
+            json.dump({"name": project_name, "version": "0.1.0"}, f, indent=4)
+            
+    # Folders
+    for folder in ["templates", "recipes", "assets"]:
+        os.makedirs(os.path.join(target_path, folder), exist_ok=True)
+        
+    # Example template
+    example_tmpl = os.path.join(target_path, "templates", "example.j2")
+    if not os.path.exists(example_tmpl):
+        with open(example_tmpl, 'w') as f:
+            f.write("Hello {{ name }}!\n")
+            
+    # Example recipe
+    example_recipe = os.path.join(target_path, "recipes", "bundle_example.lua")
+    if not os.path.exists(example_recipe):
+        with open(example_recipe, 'w') as f:
+            f.write('-- Example recipe\nprint("Initializing bundle project...")\n')
+            
+    # Example asset
+    example_asset = os.path.join(target_path, "assets", "README.txt")
+    if not os.path.exists(example_asset):
+        with open(example_asset, 'w') as f:
+            f.write("This is an example asset for your bundle project.\n")
