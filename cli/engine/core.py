@@ -12,8 +12,10 @@ class RecipeEngine:
         self.context = context or {}
         self.mode = mode
         self.actions = Actions(self)
+        self.script_content = ""
         
     def execute(self, script_content: str):
+        self.script_content = script_content
         # Setup 'r' table
         r = self.lua.table()
         

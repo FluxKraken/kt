@@ -2,16 +2,19 @@ import click
 import subprocess
 import os
 import toml
+import re
 from typing import Dict, Any, List
 from jinja2 import Template as JinjaTemplate
 from rich.console import Console
+from collections import OrderedDict
 
 console = Console()
 
 class Actions:
     def __init__(self, engine):
         self.engine = engine
-        self.collected_prompts = {}
+        self.collected_prompts = OrderedDict()
+        self.prompt_call_count = 0
         
     def _resolve_var(self, path: str):
         """Resolve a dot-notation path in self.engine.context"""
@@ -93,32 +96,66 @@ class Actions:
         """Handle prompting"""
         # args: dict of variable definitions
         schema = dict(args)
-        
+        self.prompt_call_count += 1
+
+        # Heuristic to find the correct r.prompt block in the script
+        prompts_found = list(re.finditer(r'r\.prompt\s*\(\{', self.engine.script_content))
+        if len(prompts_found) >= self.prompt_call_count:
+            start_index = prompts_found[self.prompt_call_count - 1].start()
+            depth = 0
+            started = False
+            end_index = -1
+            for i in range(start_index, len(self.engine.script_content)):
+                char = self.engine.script_content[i]
+                if char == '(':
+                    depth += 1
+                    started = True
+                elif char == ')':
+                    depth -= 1
+                
+                if started and depth == 0:
+                    end_index = i + 1
+                    break
+            
+            prompt_block = self.engine.script_content[start_index:end_index] if end_index != -1 else ""
+        else:
+            prompt_block = ""
+
+        def get_key_order(text, keys):
+            # Find the position of each key in the text
+            key_positions = []
+            for k in keys:
+                # regex to find key = or key= or "key" = or ['key'] =
+                # We also look for start of line or space before key
+                pattern = rf'(?:^|\s|[,{{])(?:\[\s*["\']{re.escape(k)}["\']\s*\]|["\']?{re.escape(k)}["\']?)\s*='
+                match = re.search(pattern, text)
+                if match:
+                    key_positions.append((k, match.start()))
+                else:
+                    key_positions.append((k, float('inf')))
+            
+            return [k for k, pos in sorted(key_positions, key=lambda x: x[1])]
+
         # Recursive helper to process schema
-        def process_node(node_schema, current_path=None):
-            result = {}
+        def process_node(node_schema, current_path=None, block_text=""):
+            result = OrderedDict()
             has_prompt = False
             
             node_dict = dict(node_schema)
-            for key, val in node_dict.items():
-                if key == "_comment": continue
-                
-                # Check if this is a leaf node (has 'default')
-                # But wait, what if a section has a 'default' key?
-                # The schema definition says:
-                # key = { default = "val" }
-                # So if 'val' is a dict and has 'default', it's a leaf.
-                # If 'val' is a dict and NO 'default', it's a nested section.
-                
-                # Converting val to dict to check
+            keys_to_process = [k for k in node_dict.keys() if k != "_comment"]
+            
+            if block_text:
+                ordered_keys = get_key_order(block_text, keys_to_process)
+            else:
+                ordered_keys = keys_to_process
+
+            for key in ordered_keys:
+                val = node_dict[key]
                 val_dict = dict(val) if hasattr(val, 'items') or hasattr(val, 'keys') else None
                 
                 if val_dict is not None and 'default' in val_dict:
                     # Leaf node
                     full_path = f"{current_path}.{key}" if current_path else key
-                    
-                    # Logic:
-                    # 1. Check if value exists in context
                     curr_val = self._resolve_var(full_path)
                     
                     if curr_val is None:
@@ -130,41 +167,55 @@ class Actions:
                 elif val_dict is not None:
                     # Nested section
                     new_path = f"{current_path}.{key}" if current_path else key
-                    child_result, child_has_prompt = process_node(val_dict, new_path)
+                    
+                    nested_block = ""
+                    if block_text:
+                        pattern = rf'(?:\[\s*["\']?{re.escape(key)}["\']?\s*\]|["\']?{re.escape(key)}["\']?)\s*='
+                        match = re.search(pattern, block_text)
+                        if match:
+                            s_idx = block_text.find('{', match.end())
+                            if s_idx != -1:
+                                d = 0
+                                e_idx = -1
+                                for i in range(s_idx, len(block_text)):
+                                    c = block_text[i]
+                                    if c == '{': d += 1
+                                    elif c == '}': d -= 1
+                                    if d == 0:
+                                        e_idx = i + 1
+                                        break
+                                if e_idx != -1:
+                                    nested_block = block_text[s_idx:e_idx]
+
+                    child_result, child_has_prompt = process_node(val_dict, new_path, nested_block)
                     if child_has_prompt:
                         has_prompt = True
                     result[key] = child_result
-                else:
-                    # Malformed or unexpected structure? 
-                    # Assuming everything else is ignored or treated as is?
-                    # For now, let's skip
-                    pass
             
             return result, has_prompt
 
         if self.engine.mode == "GENERATE_CONFIG":
             # Just accumulate defaults into context
-             defaults, _ = process_node(schema)
+             defaults, _ = process_node(schema, block_text=prompt_block)
              
              # We need to merge defaults deep into context AND collected_prompts
              def deep_merge(target, source):
                  for k, v in source.items():
                      if isinstance(v, dict):
-                         if k not in target: target[k] = {}
+                         if k not in target: target[k] = OrderedDict()
                          if isinstance(target[k], dict):
                              deep_merge(target[k], v)
                          else:
-                             # Conflict? Overwrite?
                              target[k] = v
                      else:
                          target[k] = v
-                         
+                          
              deep_merge(self.engine.context, defaults)
              deep_merge(self.collected_prompts, defaults)
              return
 
         # EXECUTE MODE
-        defaults_data, needs_prompt = process_node(schema)
+        defaults_data, needs_prompt = process_node(schema, block_text=prompt_block)
 
         if needs_prompt:
              # Create temp toml
@@ -178,7 +229,7 @@ class Actions:
                  def deep_merge(target, source):
                      for k, v in source.items():
                          if isinstance(v, dict):
-                             if k not in target: target[k] = {}
+                             if k not in target: target[k] = OrderedDict()
                              if isinstance(target[k], dict):
                                  deep_merge(target[k], v)
                              else:
@@ -192,7 +243,7 @@ class Actions:
                  def deep_merge(target, source):
                      for k, v in source.items():
                          if isinstance(v, dict):
-                             if k not in target: target[k] = {}
+                             if k not in target: target[k] = OrderedDict()
                              if isinstance(target[k], dict):
                                  deep_merge(target[k], v)
                              else:

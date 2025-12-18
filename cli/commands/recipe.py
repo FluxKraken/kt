@@ -231,10 +231,11 @@ def render_recipe(name, project, config, output):
                 # collected_prompts has the structure of defaults.
                 # We want to use values from engine.context if they exist, but only keys from collected_prompts.
                 
-                final_output = {}
+                from collections import OrderedDict
+                final_output = OrderedDict()
                 
                 def deep_filter(mask, source):
-                    result = {}
+                    result = OrderedDict()
                     for k, v in mask.items():
                         if isinstance(v, dict):
                             if k in source and isinstance(source[k], dict):
@@ -246,7 +247,7 @@ def render_recipe(name, project, config, output):
                             if k in source:
                                 result[k] = source[k]
                             else:
-                                result[k] = v # Should depend on mask value or source? Mask value is default.
+                                result[k] = v
                     return result
 
                 final_output = deep_filter(engine.actions.collected_prompts, engine.context)
