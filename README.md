@@ -12,17 +12,16 @@
 - **Shell commands inside templates**: `{>command<}` tags capture shell output during rendering.
 
 > [!WARNING]
-> `{>command<}` blocks run with `shell=True`. Only render templates you trust, and review bundled recipes before executing them.
+> `{>command<}` blocks can execute arbitrary shell commands, so be careful!  Only execute templates from sources that you trust, and never run anything without verifying it first!!
 
 ## What lives where?
 
-- **CLI entry point**: `kt` (see `cli/__init__.py`).
-- **Data store**: SQLite at `click.get_app_dir("kt")/kt.db` (created automatically).
+- **Data store**: SQLite database created under your app data directory.  OS Appropriate Location, e.g. (~/Library/Application Support/kt) on MacOS.
 - **Key resource types**:
-  - Templates (Jinja2; optional `{>command<}` shell blocks).
+  - Templates (Jinja2 extended with `{>command<}` shell command substitution.).
   - Recipes (Lua DSL; prompt → template render → command execution).
   - Assets (binary or text blobs).
-- **Bundles**: `.project` tarballs containing `project.json`, `templates/`, `recipes/`, and `assets/`.
+- **Bundles**: `.project` archives containing `project.json`, `templates/`, `recipes/`, and `assets/`.
 
 ## Installation
 
