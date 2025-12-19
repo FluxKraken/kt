@@ -106,7 +106,6 @@ After installing, you can invoke the CLI via `kt`.
 
 - [User Guide](docs/user_guide.md): CLI walkthroughs, end-to-end flows, and bundling tips.
 - [Recipe API](docs/recipe_api.md): Lua DSL reference with examples for every `r.*` helper.
-- [Recipe DSL Grammar](recipe_dsl_grammar.md): Formal grammar and semantics for the recipe language.
 
 ## License
 
