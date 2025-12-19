@@ -49,9 +49,11 @@ class Actions:
     def splice(self, path):
         """Return list at path"""
         val = self._resolve_var(path)
-        if hasattr(val, 'values'): # It's a lua table/dict
-             return tuple(val.values())
-        return tuple(val) if isinstance(val, list) else ()
+        # Ensure it's a python list/tuple before returning
+        python_val = self._lua_to_python(val)
+        if isinstance(python_val, list):
+            return tuple(python_val)
+        return (python_val,) if python_val is not None and python_val != "" else ()
 
     def _lua_to_python(self, obj):
         """Recursively convert Lua tables to Python dicts/lists"""
@@ -160,9 +162,9 @@ class Actions:
                     
                     if curr_val is None:
                         has_prompt = True
-                        result[key] = val_dict.get('default')
+                        result[key] = self._lua_to_python(val_dict.get('default'))
                     else:
-                        result[key] = curr_val
+                        result[key] = self._lua_to_python(curr_val)
                         
                 elif val_dict is not None:
                     # Nested section
@@ -387,9 +389,10 @@ class Actions:
         # cmd_args is list of strings
         # options might have cwd
         
-         # Lupa converts Lua tables to python objects that support iteration/indexing
-         # But we should be safe converting to list/dict
-        cmd_list = list(cmd_args.values()) if hasattr(cmd_args, 'values') else list(cmd_args)
+        # Use _lua_to_python to handle command arguments reliably
+        cmd_list = self._lua_to_python(cmd_args)
+        if not isinstance(cmd_list, list):
+            cmd_list = [cmd_list]
         
         opts = dict(options) if options else {}
         cwd = opts.get("cwd")
