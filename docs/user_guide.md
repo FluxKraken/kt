@@ -1,124 +1,181 @@
 # kt User Guide
 
-`kt` is a project-oriented scaffolding system. It helps you manage and apply templates, recipes, and assets to create new projects or enhance existing ones.
+`kt` is a project-oriented scaffolding system. It stores templates, recipes, and assets in a lightweight SQLite database and exposes a Click-based CLI to compose them into project skeletons.
 
-## Concepts
+## Core Concepts
 
-- **Project**: A namespace that groups templates, recipes, and assets (e.g., "sveltekit", "fastapi").
-- **Template**: A text file (Jinja2) used to generate code/config files.
-- **Recipe**: A Lua script that defines a workflow (prompting, rendering, running commands).
-- **Asset**: A static file (image, binary) to be copied.
-- **Bundle**: A `.project` archive containing a project and all its resources.
+- **Project** — A namespace that groups templates, recipes, and assets (e.g., `sveltekit`, `fastapi`).
+- **Template** — A Jinja2 text template rendered to files. Supports `{>command<}` blocks that execute shell commands at render time.
+- **Recipe** — A Lua script that collects input, renders templates, copies assets, and runs commands.
+- **Asset** — A binary or text file copied verbatim (images, fonts, binaries).
+- **Bundle** — A `.project` tarball that contains a project, its recipes, templates, and assets.
 
-## CLI Core Commands
+## Installation & Setup
 
-### Initialization
+```bash
+uv tool install https://github.com/FluxKraken/kt.git
+kt --help   # verify installation
+```
 
-Initialize the database (run once):
+Initialize the local database (stored in your platform’s app data directory):
 
 ```bash
 kt init
 ```
 
-### Project Management
+> **Tip:** All commands accept `--help` for on-demand usage details.
 
-Projects help organize your resources.
+## Project Management
+
+Projects keep resources scoped and organized.
 
 ```bash
-# List all projects
+# List existing projects
 kt project list
 
-# Add a new project
-kt project add [name]
+# Create a project namespace
+kt project add my-stack
 
-# Delete a project (recursively deletes resources)
-kt project delete [name] --recursive
-
-# Import a project bundle
-kt project import ./myproject.project --overwrite
-
-# Export a project bundle
-kt project export [name] --output ./myproject.project
+# Delete a project (use --recursive to remove its resources)
+kt project delete my-stack --recursive
 ```
 
-### Resource Management
+### Importing & Exporting Projects
 
-All resource commands support a `--project [name]` flag to assign them to a specific project.
+- **Import from bundle**: `kt project import ./starter.project --overwrite`
+- **Import from folder**: `kt project import ./starter-folder --overwrite`
+- **Export to bundle**: `kt project export my-stack --output ./my-stack.project`
 
-#### Templates
+> Bundles are tar.gz archives. They keep file names and project metadata so you can rehydrate a stack elsewhere.
 
-Jinja2 templates used by recipes.
+## Working with Templates
+
+Templates are Jinja2 files. `kt` can pre-compute missing variables and prompt you via your editor.
+
+Common flows:
 
 ```bash
-kt template list --project [name]
-kt template add [name] --project [name] # Opens editor
-kt template import [path] --project [name]
-kt template render [name] --project [name] --output [path]
-# With config
-kt template render [name] --project [name] --config config.toml --output [path]
-# Generate config skeleton
-kt template render [name] --project [name] --gen-config skeleton.toml
+# List templates (unscoped or within a project)
+kt template list --project my-stack
+
+# Add a template (opens your $EDITOR)
+kt template add service --project my-stack
+
+# Import an existing file as a template
+kt template import ./service.j2 --project my-stack --name service
+
+# Generate a config skeleton for required variables
+kt template render service --project my-stack --gen-config ./service.defaults.toml
+
+# Render to disk (prompts for missing values if needed)
+kt template render service --project my-stack --output ./build/service.py
 ```
 
-#### Shell Command Extension
-
-`kt` extends Jinja2 with the ability to execute shell commands and substitute their output. Use the `{>command<}` syntax.
-
-Example:
+Shell command blocks allow dynamic content:
 
 ```jinja
-SECRET_KEY='{>openssl rand -base64 32<}'
+SECRET_KEY = "{>openssl rand -base64 32<}"
+GIT_REMOTE = "{>git config --get remote.origin.url<}"
 ```
 
-You can also use Jinja variables within the shell command:
+> **Security warning:** `{>command<}` blocks run with `shell=True`. Only render trusted templates.
 
-```jinja
-DYNAMIC_INFO='{>echo "Generated for {{user}}"<}'
-```
+## Working with Recipes
 
-> [!CAUTION] > **Security Warning**: Shell commands are executed with full shell privileges. Never render untrusted templates.
-
-#### Assets
-
-Static files (logos, binaries).
+Recipes orchestrate prompting, templating, and execution. Each recipe can either **generate config** or **execute** depending on the flags you pass.
 
 ```bash
-kt asset list --project [name]
-kt asset add [name] --file [path] --project [name]
+# List or import recipes
+kt recipe list --project my-stack
+kt recipe import ./init.lua --project my-stack --name init
+
+# Generate a TOML config file from prompts
+kt recipe render init --project my-stack --output ./config.toml
+
+# Execute using a prepared config
+kt recipe render init --project my-stack --config ./config.toml
 ```
 
-#### Recipes
+Quick sample recipe (Lua):
 
-Lua scripts that drive the scaffolding process.
+```lua
+r.prompt({
+  project = { name = { default = "my-service" } },
+  features = { telemetry = { default = true } }
+})
+
+r.template("my-stack::service", {
+  output = r.f("$(project.name)/service.py"),
+  context = { telemetry = r.ref("features.telemetry") }
+})
+
+r.command({ check = "features.telemetry" }, function()
+  r.run({ "bash", "-lc", r.f("cd $(project.name) && ./enable-telemetry.sh") })
+end)
+```
+
+- `r.prompt` writes defaults to the config (or opens your editor in execute mode if values are missing).
+- `r.template` renders a template to disk with the provided context.
+- `r.command` conditionally runs shell actions (`check` looks up a boolean in the context).
+
+## Working with Assets
+
+Assets keep non-text resources alongside templates.
 
 ```bash
-kt recipe list --project [name]
-kt recipe add [name] --project [name] # Opens editor
-kt recipe import [path] --project [name]
+# List assets
+kt asset list --project my-stack
+
+# Add a binary asset
+kt asset add logo --file ./logo.png --project my-stack
+
+# Use assets in recipes
+r.assets("my-stack::logo", { destination = r.f("$(project.name)/public/logo.png") })
 ```
 
-## Running Recipes
+## Bundling & Sharing
 
-The core power of `kt` is executing recipes.
-
-### 1. Generate Configuration
-
-First, generate a TOML configuration file based on the queries defined in the recipe.
+Bundles pack everything needed to rehydrate a stack.
 
 ```bash
-kt recipe render [name] --project [project] --output config.toml
+# Initialize a new on-disk bundle structure with examples
+kt bundle init ./starter
+
+# Create a .project archive from a folder (defaults to project.json name)
+kt bundle create ./starter --file ./starter.project
+
+# Expand a received .project archive without importing to the DB
+kt bundle expand ./starter.project ./expanded --overwrite
 ```
 
-### 2. Edit Configuration
+## End-to-End Example
 
-Open `config.toml` and fill in the required values (e.g., project name, database credentials).
-
-### 3. Execute
-
-Run the recipe using the filled configuration.
+1) Create project & import resources:
 
 ```bash
-kt recipe render [name] --project [project] --config config.toml
+kt project add flask-app
+kt template import ./app.j2 --project flask-app --name app
+kt asset add logo --file ./logo.png --project flask-app
+kt recipe import ./scaffold.lua --project flask-app --name scaffold
 ```
 
-If you don't provide a config file, `kt` will attempt to prompt you interactively or use defaults, but the two-step process is recommended for complex setups.
+2) Generate config, edit, then execute:
+
+```bash
+kt recipe render scaffold --project flask-app --output ./flask-config.toml
+${EDITOR:-vi} ./flask-config.toml
+kt recipe render scaffold --project flask-app --config ./flask-config.toml
+```
+
+3) Share it:
+
+```bash
+kt project export flask-app --output ./flask-app.project
+```
+
+## Troubleshooting & Tips
+
+- **Editor prompts**: Commands that open your editor respect `$EDITOR` and `$VISUAL`. Set one if you prefer a specific editor.
+- **Overwrites**: Most commands default to safety. Pass `--overwrite` to replace existing files or DB entries.
+- **Database location**: The SQLite file lives at `click.get_app_dir("kt")/kt.db` (platform-specific app data path).
+- **Show help**: `kt <command> --help` prints options and subcommands (e.g., `kt template render --help`).
