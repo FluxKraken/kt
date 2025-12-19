@@ -1,55 +1,113 @@
 # kt - The Project Scaffolder
 
-`kt` is a powerful, project-oriented scaffolding system designed to help developers create and manage reusable project blueprints. It combines Jinja2 templates, Lua-based recipes, and static assets into a unified workflow.
+`kt` is a project-oriented scaffolding tool that lets you combine Jinja2 templates, Lua recipes, and binary assets into reusable blueprints. It stores everything in a lightweight SQLite database (under your platform’s application data directory) and exposes a Click-based CLI for day-to-day work.
 
-## Features
+## Why kt?
 
-- **Project-Oriented**: Organize templates and recipes by project (e.g., `django`, `react`, `library`).
-- **Lua Recipes**: Define complex initialization logic using a simple Lua DSL.
-- **Interactive Configuration**: Generate configuration files from recipes, edit them, and then apply.
-- **Bundling**: Export entire project setups as single `.project` files for easy sharing.
-- **Asset Management**: Handle binary assets (images, fonts) alongside text templates.
-- **Shell Command Extension**: Execute shell commands directly within templates using `{>command<}` syntax.
+- **Project-first organization**: Namespaces keep templates, recipes, and assets tidy for each stack (`fastapi`, `react`, `plugin`, etc.).
+- **Lua recipe engine**: Recipes mix prompts, templating, filesystem actions, and shell commands with a compact DSL.
+- **Interactive or file-driven config**: Generate TOML config skeletons, edit them, and run repeatable scaffolds.
+- **One-file bundles**: Share whole stacks as `.project` archives that include metadata, recipes, templates, and assets.
+- **Binary-friendly assets**: Ship icons, fonts, and other non-text files alongside templates.
+- **Shell commands inside templates**: `{>command<}` tags capture shell output during rendering.
 
-> [!WARNING] > **Security Note**: The shell command extension executes commands with `shell=True`. Only use this feature with templates from trusted sources, as it can be used to execute arbitrary code on the host system.
+> [!WARNING]
+> `{>command<}` blocks run with `shell=True`. Only render templates you trust, and review bundled recipes before executing them.
+
+## What lives where?
+
+- **CLI entry point**: `kt` (see `cli/__init__.py`).
+- **Data store**: SQLite at `click.get_app_dir("kt")/kt.db` (created automatically).
+- **Key resource types**:
+  - Templates (Jinja2; optional `{>command<}` shell blocks).
+  - Recipes (Lua DSL; prompt → template render → command execution).
+  - Assets (binary or text blobs).
+- **Bundles**: `.project` tarballs containing `project.json`, `templates/`, `recipes/`, and `assets/`.
 
 ## Installation
 
-Using `uv`:
+Install with `uv`:
 
 ```bash
 uv tool install https://github.com/FluxKraken/kt.git
 ```
 
-## Quick Start
+After installing, you can invoke the CLI via `kt`.
 
-1.  **Create a Project Context**
+## Core Workflow (Quick Tour)
 
-    ```bash
-    kt project add my-stack
-    ```
+1. **Initialize the local database** (creates `kt.db` under your app data dir):
 
-2.  **Add a Recipe**
+   ```bash
+   kt init
+   ```
 
-    ```bash
-    kt recipe import ./init.lua --project my-stack --name init
-    ```
+2. **Create a project namespace**:
 
-3.  **Generate Config**
+   ```bash
+   kt project add my-stack
+   ```
 
-    ```bash
-    kt recipe render init --project my-stack --output config.toml
-    ```
+3. **Import a Lua recipe and a template** (assigning them to the project):
 
-4.  **Run Scaffolding**
-    ```bash
-    kt recipe render init --project my-stack --config config.toml
-    ```
+   ```bash
+   kt recipe import ./init.lua --project my-stack --name init
+   kt template import ./service.j2 --project my-stack --name service
+   ```
+
+4. **Draft a config from the recipe’s prompts**:
+
+   ```bash
+   kt recipe render init --project my-stack --output config.toml
+   ```
+
+5. **Fill in `config.toml`** (the file is pre-populated with defaults declared in the recipe).
+
+6. **Execute the scaffold**:
+
+   ```bash
+   kt recipe render init --project my-stack --config config.toml
+   ```
+
+7. **Bundle and share** everything as a single archive:
+
+   ```bash
+   kt project export my-stack --output ./my-stack.project
+   ```
+
+## Practical Examples
+
+- **Render a template straight to disk** (prompts for missing values via your editor):
+
+  ```bash
+  kt template render service --project my-stack --output ./build/service.py
+  ```
+
+- **Generate a config skeleton for a template** (inspect required variables before rendering):
+
+  ```bash
+  kt template render service --project my-stack --gen-config ./service.defaults.toml
+  ```
+
+- **Copy a binary asset into your project**:
+
+  ```bash
+  kt asset add logo --file ./logo.png --project my-stack
+  # later
+  kt recipe render init --project my-stack --config config.toml
+  ```
+
+- **Expand a bundle you received** (without importing into the database):
+
+  ```bash
+  kt bundle expand ./starter.project ./unpacked --overwrite
+  ```
 
 ## Documentation
 
-- [User Guide](docs/user_guide.md): Detailed CLI usage command reference.
-- [Recipe API](docs/recipe_api.md): Lua DSL reference for writing recipes.
+- [User Guide](docs/user_guide.md): CLI walkthroughs, end-to-end flows, and bundling tips.
+- [Recipe API](docs/recipe_api.md): Lua DSL reference with examples for every `r.*` helper.
+- [Recipe DSL Grammar](recipe_dsl_grammar.md): Formal grammar and semantics for the recipe language.
 
 ## License
 
