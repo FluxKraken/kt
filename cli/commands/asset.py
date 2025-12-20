@@ -96,3 +96,50 @@ def delete_asset(name, project):
         session.delete(asset_obj)
         session.commit()
         console.print(f"[green]Asset '{name}' deleted.[/green]")
+
+@asset.command("assign")
+@click.argument("name")
+@click.option("--project", help="Project to assign to", required=True)
+@click.option("--copy", is_flag=True, help="Copy instead of move")
+def assign_asset(name, project, copy):
+    """Assign an asset to a project"""
+    with get_session() as session:
+        # Find the project
+        proj = session.exec(select(Project).where(Project.name == project)).first()
+        if not proj:
+            console.print(f"[red]Project '{project}' not found.[/red]")
+            return
+        
+        # Find the asset (prefer unassigned)
+        asset_obj = session.exec(select(Asset).where(Asset.name == name).where(Asset.project_id == None)).first()
+        
+        if not asset_obj:
+             assets = session.exec(select(Asset).where(Asset.name == name)).all()
+             if not assets:
+                 console.print(f"[red]Asset '{name}' not found.[/red]")
+                 return
+             if len(assets) > 1:
+                 console.print(f"[red]Multiple assets named '{name}' found. Please create a unique name.[/red]")
+                 return
+             asset_obj = assets[0]
+        
+        if asset_obj.project_id == proj.id:
+            console.print(f"[yellow]Asset '{name}' is already assigned to project '{project}'.[/yellow]")
+            return
+
+        # Check if destination already has an asset with this name
+        existing = session.exec(select(Asset).where(Asset.name == name).where(Asset.project_id == proj.id)).first()
+        if existing:
+            console.print(f"[red]Project '{project}' already has an asset named '{name}'.[/red]")
+            return
+
+        if copy:
+            new_asset = Asset(name=asset_obj.name, source_path=asset_obj.source_path, content=asset_obj.content, project_id=proj.id)
+            session.add(new_asset)
+            console.print(f"[green]Asset '{name}' copied to project '{project}'.[/green]")
+        else:
+            asset_obj.project_id = proj.id
+            session.add(asset_obj)
+            console.print(f"[green]Asset '{name}' moved to project '{project}'.[/green]")
+            
+        session.commit()

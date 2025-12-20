@@ -295,3 +295,50 @@ def export_template(name, project, output, overwrite):
         with open(output, 'w') as f:
             f.write(tmpl.content)
         console.print(f"[green]Template exported to '{output}'.[/green]")
+
+@template.command("assign")
+@click.argument("name")
+@click.option("--project", help="Project to assign to", required=True)
+@click.option("--copy", is_flag=True, help="Copy instead of move")
+def assign_template(name, project, copy):
+    """Assign a template to a project"""
+    with get_session() as session:
+        # Find the project
+        proj = session.exec(select(Project).where(Project.name == project)).first()
+        if not proj:
+            console.print(f"[red]Project '{project}' not found.[/red]")
+            return
+        
+        # Find the template (prefer unassigned)
+        tmpl = session.exec(select(Template).where(Template.name == name).where(Template.project_id == None)).first()
+        
+        if not tmpl:
+             tmpls = session.exec(select(Template).where(Template.name == name)).all()
+             if not tmpls:
+                 console.print(f"[red]Template '{name}' not found.[/red]")
+                 return
+             if len(tmpls) > 1:
+                 console.print(f"[red]Multiple templates named '{name}' found. Please create a unique name.[/red]")
+                 return
+             tmpl = tmpls[0]
+        
+        if tmpl.project_id == proj.id:
+            console.print(f"[yellow]Template '{name}' is already assigned to project '{project}'.[/yellow]")
+            return
+
+        # Check if destination already has a template with this name
+        existing = session.exec(select(Template).where(Template.name == name).where(Template.project_id == proj.id)).first()
+        if existing:
+            console.print(f"[red]Project '{project}' already has a template named '{name}'.[/red]")
+            return
+
+        if copy:
+            new_tmpl = Template(name=tmpl.name, content=tmpl.content, project_id=proj.id)
+            session.add(new_tmpl)
+            console.print(f"[green]Template '{name}' copied to project '{project}'.[/green]")
+        else:
+            tmpl.project_id = proj.id
+            session.add(tmpl)
+            console.print(f"[green]Template '{name}' moved to project '{project}'.[/green]")
+            
+        session.commit()

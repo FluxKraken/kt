@@ -230,3 +230,51 @@ def render_project(name, config, output):
                  console.print(f"[green]Project '{project_context}' rendered using default recipe.[/green]")
         except Exception as e:
             console.print(f"[red]Error rendering project: {e}[/red]")
+
+@project.command("unassign")
+@click.argument("name")
+@click.option("--recipe", help="Recipe name to unassign")
+@click.option("--template", help="Template name to unassign")
+@click.option("--asset", help="Asset name to unassign")
+def unassign_resource(name, recipe, template, asset):
+    """Unassign a resource from a project"""
+    if not any([recipe, template, asset]):
+        console.print("[red]Please specify at least one resource to unassign (--recipe, --template, or --asset).[/red]")
+        return
+        
+    with get_session() as session:
+        proj = session.exec(select(Project).where(Project.name == name)).first()
+        if not proj:
+            console.print(f"[red]Project '{name}' not found.[/red]")
+            return
+            
+        from cli.db.models import Recipe, Template, Asset
+        
+        if recipe:
+            rec = session.exec(select(Recipe).where(Recipe.name == recipe).where(Recipe.project_id == proj.id)).first()
+            if rec:
+                rec.project_id = None
+                session.add(rec)
+                console.print(f"[green]Recipe '{recipe}' unassigned from project '{name}'.[/green]")
+            else:
+                console.print(f"[red]Recipe '{recipe}' not found in project '{name}'.[/red]")
+                
+        if template:
+            tmpl = session.exec(select(Template).where(Template.name == template).where(Template.project_id == proj.id)).first()
+            if tmpl:
+                tmpl.project_id = None
+                session.add(tmpl)
+                console.print(f"[green]Template '{template}' unassigned from project '{name}'.[/green]")
+            else:
+                console.print(f"[red]Template '{template}' not found in project '{name}'.[/red]")
+                
+        if asset:
+            ast = session.exec(select(Asset).where(Asset.name == asset).where(Asset.project_id == proj.id)).first()
+            if ast:
+                ast.project_id = None
+                session.add(ast)
+                console.print(f"[green]Asset '{asset}' unassigned from project '{name}'.[/green]")
+            else:
+                console.print(f"[red]Asset '{asset}' not found in project '{name}'.[/red]")
+                
+        session.commit()

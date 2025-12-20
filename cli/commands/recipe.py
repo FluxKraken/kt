@@ -187,6 +187,60 @@ def export_recipe(name, project, output, overwrite):
             f.write(rec.content)
         console.print(f"[green]Recipe exported to '{output}'.[/green]")
 
+@recipe.command("assign")
+@click.argument("name")
+@click.option("--project", help="Project to assign to", required=True)
+@click.option("--copy", is_flag=True, help="Copy instead of move")
+def assign_recipe(name, project, copy):
+    """Assign a recipe to a project"""
+    with get_session() as session:
+        # Find the project
+        proj = session.exec(select(Project).where(Project.name == project)).first()
+        if not proj:
+            console.print(f"[red]Project '{project}' not found.[/red]")
+            return
+        
+        # Find the recipe (prefer unassigned)
+        # Search for unassigned first
+        rec = session.exec(select(Recipe).where(Recipe.name == name).where(Recipe.project_id == None)).first()
+        
+        if not rec:
+             # If not found unassigned, check if it exists in another project? 
+             # For now, let's assume we only assign unassigned ones or we'd need a source project flag.
+             # The user request said "Assign those to a particular project", implying unassigned assets.
+             # But "move that asset into the project" could mean from anywhere.
+             # Let's search generally if not found in unassigned, but warn if ambiguous?
+             # Simple approach: find any recipe with that name. If multiple, error.
+             recs = session.exec(select(Recipe).where(Recipe.name == name)).all()
+             if not recs:
+                 console.print(f"[red]Recipe '{name}' not found.[/red]")
+                 return
+             if len(recs) > 1:
+                 console.print(f"[red]Multiple recipes named '{name}' found. Please create a unique name or use ID (not impl).[/red]")
+                 return
+             rec = recs[0]
+        
+        if rec.project_id == proj.id:
+            console.print(f"[yellow]Recipe '{name}' is already assigned to project '{project}'.[/yellow]")
+            return
+
+        # Check if destination already has a recipe with this name
+        existing = session.exec(select(Recipe).where(Recipe.name == name).where(Recipe.project_id == proj.id)).first()
+        if existing:
+            console.print(f"[red]Project '{project}' already has a recipe named '{name}'.[/red]")
+            return
+
+        if copy:
+            new_rec = Recipe(name=rec.name, content=rec.content, project_id=proj.id)
+            session.add(new_rec)
+            console.print(f"[green]Recipe '{name}' copied to project '{project}'.[/green]")
+        else:
+            rec.project_id = proj.id
+            session.add(rec)
+            console.print(f"[green]Recipe '{name}' moved to project '{project}'.[/green]")
+            
+        session.commit()
+
 @recipe.command("render")
 @click.argument("name")
 @click.option("--project", help="Project context")
