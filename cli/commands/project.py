@@ -75,6 +75,10 @@ def delete_project(name, recursive):
                 asset.project_id = None
                 session.add(asset)
             
+            session.commit()
+            
+            # Need to re-fetch project or ensure it's attached to session for deletion?
+            # It should still be attached.
             session.delete(project)
             session.commit()
             console.print(f"[green]Project '{name}' deleted. Resources unassigned.[/green]")
