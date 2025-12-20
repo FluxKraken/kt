@@ -35,6 +35,7 @@ class RecipeEngine:
         r.f = self.actions.f
         r.ref = self.actions.ref
         r.splice = self.actions.splice
+        r.recipe = self.actions.recipe
         
         self.lua.globals().r = r
         

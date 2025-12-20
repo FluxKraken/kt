@@ -457,6 +457,52 @@ class Actions:
             f.write(content)
         console.print(f"[green]Copied asset {destination}[/green]")
 
+    def recipe(self, name):
+        """Execute another recipe"""
+        # Resolve 'name'. Name might be "project::recipe_name" or just "recipe_name"
+        proj_name = None
+        recipe_name = name
+        if "::" in name:
+            proj_name, recipe_name = name.split("::")
+
+        from cli.db.session import get_session
+        from cli.db.models import Recipe, Project
+        from sqlmodel import select
+
+        with get_session() as session:
+            query = select(Recipe).where(Recipe.name == recipe_name)
+            if proj_name:
+                proj = session.exec(select(Project).where(Project.name == proj_name)).first()
+                if proj:
+                     query = query.where(Recipe.project_id == proj.id)
+            
+            recipe_obj = session.exec(query).first()
+            if not recipe_obj:
+                console.print(f"[red]Recipe '{name}' not found.[/red]")
+                # Should we raise error? For now, just return/log
+                return
+
+            recipe_content = recipe_obj.content
+
+        # Save current state
+        old_content = self.engine.script_content
+        old_count = self.prompt_call_count
+        
+        # Set new state
+        self.engine.script_content = recipe_content
+        self.prompt_call_count = 0
+        
+        try:
+            # Execute
+            self.engine.lua.execute(recipe_content)
+        except Exception as e:
+            console.print(f"[red]Error executing recipe '{name}': {e}[/red]")
+            raise e
+        finally:
+            # Restore state
+            self.engine.script_content = old_content
+            self.prompt_call_count = old_count
+
     def command(self, args, func):
         """Command block"""
         args = dict(args)
