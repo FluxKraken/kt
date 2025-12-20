@@ -10,6 +10,7 @@ class Project(SQLModel, table=True):
     templates: List["Template"] = Relationship(back_populates="project", cascade_delete=True)
     recipes: List["Recipe"] = Relationship(back_populates="project", cascade_delete=True)
     assets: List["Asset"] = Relationship(back_populates="project", cascade_delete=True)
+    default_recipe: Optional[str] = Field(default=None)
 
 class Template(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

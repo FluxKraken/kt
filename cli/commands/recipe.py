@@ -227,33 +227,7 @@ def render_recipe(name, project, config, output):
             engine.execute(rec.content)
             
             if mode == "GENERATE_CONFIG":
-                # Filter context to only show what was explicitly prompted
-                # collected_prompts has the structure of defaults.
-                # We want to use values from engine.context if they exist, but only keys from collected_prompts.
-                
-                from collections import OrderedDict
-                final_output = OrderedDict()
-                
-                def deep_filter(mask, source):
-                    result = OrderedDict()
-                    for k, v in mask.items():
-                        if isinstance(v, dict):
-                            if k in source and isinstance(source[k], dict):
-                                nested = deep_filter(v, source[k])
-                                if nested:
-                                    result[k] = nested
-                        else:
-                            # Leaf
-                            if k in source:
-                                result[k] = source[k]
-                            else:
-                                result[k] = v
-                    return result
-
-                final_output = deep_filter(engine.actions.collected_prompts, engine.context)
-
-                with open(output, 'w') as f:
-                    toml.dump(final_output, f)
+                engine.render(output)
                 console.print(f"[green]Config generated at '{output}'[/green]")
             else:
                  console.print(f"[green]Recipe '{name}' executed.[/green]")

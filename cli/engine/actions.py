@@ -104,39 +104,140 @@ class Actions:
         prompts_found = list(re.finditer(r'r\.prompt\s*\(\{', self.engine.script_content))
         if len(prompts_found) >= self.prompt_call_count:
             start_index = prompts_found[self.prompt_call_count - 1].start()
+            # Find the actual content between the parentheses
+            block_start = -1
             depth = 0
             started = False
             end_index = -1
+            
             for i in range(start_index, len(self.engine.script_content)):
                 char = self.engine.script_content[i]
                 if char == '(':
                     depth += 1
-                    started = True
+                    if not started:
+                        started = True
+                        block_start = i + 1
                 elif char == ')':
                     depth -= 1
                 
                 if started and depth == 0:
-                    end_index = i + 1
+                    end_index = i
                     break
             
-            prompt_block = self.engine.script_content[start_index:end_index] if end_index != -1 else ""
+            prompt_block = self.engine.script_content[block_start:end_index] if (end_index != -1 and block_start != -1) else ""
         else:
             prompt_block = ""
 
-        def get_key_order(text, keys):
-            # Find the position of each key in the text
-            key_positions = []
-            for k in keys:
-                # regex to find key = or key= or "key" = or ['key'] =
-                # We also look for start of line or space before key
-                pattern = rf'(?:^|\s|[,{{])(?:\[\s*["\']{re.escape(k)}["\']\s*\]|["\']?{re.escape(k)}["\']?)\s*='
-                match = re.search(pattern, text)
-                if match:
-                    key_positions.append((k, match.start()))
-                else:
-                    key_positions.append((k, float('inf')))
+        def parse_lua_block(text):
+            """
+            Parses a Lua table block and returns an OrderedDict of key -> value_text.
+            Handles strings, comments, nesting, and overlapping names robustly.
+            """
+            parsed = OrderedDict()
             
-            return [k for k, pos in sorted(key_positions, key=lambda x: x[1])]
+            depth = 0
+            parens = 0
+            in_string = None
+            i = 0
+            
+            ident_re = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*')
+            
+            curr_key = None
+            value_start = -1
+            parsing_value = False
+            
+            # To handle r.prompt({ ... }), we need to know the baseline depth/parens
+            # But simpler: just track depth relative to start.
+            # We assume the keys we want are at the "first level of braces" we encounter.
+            # Or if text starts with {, keys are at depth 1.
+            # If text is r.prompt({, keys are at depth 1.
+            
+            target_depth = 1
+            
+            while i < len(text):
+                char = text[i]
+                
+                # String handling
+                if not in_string:
+                    if char in ("'", '"'):
+                        in_string = char
+                    elif text[i:i+2] == '--':
+                        while i < len(text) and text[i] != '\n': i += 1
+                        continue
+                elif char == in_string:
+                     if text[i-1] == '\\' and text[i-2] != '\\': pass
+                     else: in_string = None
+                
+                if not in_string:
+                     if char == '{': depth += 1
+                     elif char == '}': depth -= 1
+                     elif char == '(': parens += 1
+                     elif char == ')': parens -= 1
+                
+                # Logic
+                if parsing_value:
+                    if not in_string:
+                        # Value ends at comma/semicolon at same depth as key
+                        # OR if block ends (depth drops < target_depth)
+                        is_separator = (char in (',', ';') and depth == target_depth and parens == 0) # Assuming keys at parens=0 or balanced
+                        # Actually parens might be non-zero if r.prompt({...})
+                        # But within the table, parens should be balanced relative to key start?
+                        # Let's just say value ends at ,; if depth matches.
+                        
+                        is_end_of_block = (depth < target_depth)
+                        
+                        if is_separator or is_end_of_block:
+                            val_text = text[value_start:i].strip()
+                            parsed[curr_key] = val_text
+                            parsing_value = False
+                            curr_key = None
+                else:
+                    # Looking for key
+                    # We expect keys at target_depth.
+                    # We allow target_depth to be inferred from first { if depth 0.
+                    
+                    if not in_string:
+                        # Identify target depth if not set? 
+                        # If text starts with 'r.prompt', depth is 0 initially.
+                        # We want keys inside the { }.
+                        pass
+                        
+                    if not in_string and depth == target_depth:
+                         # Attempt match key
+                         match = ident_re.match(text[i:])
+                         if match:
+                            potential_key = match.group()
+                            j = i + len(potential_key)
+                            while j < len(text) and text[j].isspace(): j += 1
+                            if j < len(text) and text[j] == '=':
+                                curr_key = potential_key
+                                parsing_value = True
+                                value_start = j + 1
+                                i = j
+                                continue
+                         
+                         if char == '[':
+                            j = i + 1
+                            while j < len(text) and text[j].isspace(): j += 1
+                            if j < len(text) and text[j] in ("'", '"'):
+                                q = text[j]
+                                k_start = j + 1
+                                k_end = text.find(q, k_start)
+                                if k_end != -1:
+                                    potential_key = text[k_start:k_end]
+                                    j = k_end + 1
+                                    while j < len(text) and text[j].isspace(): j += 1
+                                    if j < len(text) and text[j] == ']':
+                                        j += 1
+                                        while j < len(text) and text[j].isspace(): j += 1
+                                        if j < len(text) and text[j] == '=':
+                                            curr_key = potential_key
+                                            parsing_value = True
+                                            value_start = j + 1
+                                            i = j
+                                            continue
+                i += 1
+            return parsed
 
         # Recursive helper to process schema
         def process_node(node_schema, current_path=None, block_text=""):
@@ -147,11 +248,21 @@ class Actions:
             keys_to_process = [k for k in node_dict.keys() if k != "_comment"]
             
             if block_text:
-                ordered_keys = get_key_order(block_text, keys_to_process)
+                # Get parsed block map
+                parsed_block_map = parse_lua_block(block_text)
+                
+                # Order keys based on parsed map, append others
+                ordered_keys = list(parsed_block_map.keys())
+                for k in keys_to_process:
+                    if k not in ordered_keys:
+                        ordered_keys.append(k)
             else:
                 ordered_keys = keys_to_process
+                parsed_block_map = {}
 
             for key in ordered_keys:
+                if key not in node_dict: continue # Skip keys found in text but not in schema
+                
                 val = node_dict[key]
                 val_dict = dict(val) if hasattr(val, 'items') or hasattr(val, 'keys') else None
                 
@@ -170,24 +281,7 @@ class Actions:
                     # Nested section
                     new_path = f"{current_path}.{key}" if current_path else key
                     
-                    nested_block = ""
-                    if block_text:
-                        pattern = rf'(?:\[\s*["\']?{re.escape(key)}["\']?\s*\]|["\']?{re.escape(key)}["\']?)\s*='
-                        match = re.search(pattern, block_text)
-                        if match:
-                            s_idx = block_text.find('{', match.end())
-                            if s_idx != -1:
-                                d = 0
-                                e_idx = -1
-                                for i in range(s_idx, len(block_text)):
-                                    c = block_text[i]
-                                    if c == '{': d += 1
-                                    elif c == '}': d -= 1
-                                    if d == 0:
-                                        e_idx = i + 1
-                                        break
-                                if e_idx != -1:
-                                    nested_block = block_text[s_idx:e_idx]
+                    nested_block = parsed_block_map.get(key, "")
 
                     child_result, child_has_prompt = process_node(val_dict, new_path, nested_block)
                     if child_has_prompt:

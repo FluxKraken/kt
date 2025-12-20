@@ -2,6 +2,9 @@ import lupa
 from lupa import LuaRuntime
 from cli.engine.actions import Actions
 from typing import Dict, Any, Optional
+import os
+import toml
+from collections import OrderedDict
 
 class RecipeEngine:
     def __init__(self, context: Dict[str, Any] = None, mode: str = "EXECUTE"):
@@ -42,3 +45,37 @@ class RecipeEngine:
             import traceback
             traceback.print_exc()
             raise RuntimeError(f"Lua execution error: {e}")
+
+    def render(self, output_path: Optional[str] = None):
+        """
+        Finalize the recipe rendering process. 
+        If mode is GENERATE_CONFIG, write the collected prompts to output_path.
+        """
+        if self.mode == "GENERATE_CONFIG":
+            if not output_path:
+                raise ValueError("output_path is required for GENERATE_CONFIG mode")
+
+            def deep_filter(mask, source):
+                result = OrderedDict()
+                for k, v in mask.items():
+                    if isinstance(v, dict):
+                        if k in source and isinstance(source[k], dict):
+                            nested = deep_filter(v, source[k])
+                            if nested:
+                                result[k] = nested
+                    else:
+                        # Leaf
+                        if k in source:
+                            result[k] = source[k]
+                        else:
+                            result[k] = v
+                return result
+
+            final_output = deep_filter(self.actions.collected_prompts, self.context)
+            
+            # Use toml.dump with OrderedDict support if possible
+            # Standard toml library supports OrderedDict if passed directly
+            with open(output_path, 'w') as f:
+                toml.dump(final_output, f)
+            return True
+        return False

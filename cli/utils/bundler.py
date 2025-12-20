@@ -30,7 +30,8 @@ def create_bundle(project_name: str, output_path: str, overwrite: bool = False):
             # Metadata
             meta = {
                 "name": proj.name,
-                "created_at": str(proj.created_at)
+                "created_at": str(proj.created_at),
+                "default_recipe": proj.default_recipe
             }
             with open(os.path.join(tmpdir, "project.json"), 'w') as f:
                 json.dump(meta, f)
@@ -95,7 +96,7 @@ def import_project_from_dir(root_dir: str, overwrite: bool = False):
             if not overwrite:
                 raise FileExistsError(f"Project '{project_name}' already exists.")
         else:
-            existing = Project(name=project_name)
+            existing = Project(name=project_name, default_recipe=meta.get("default_recipe"))
             session.add(existing)
             session.commit()
             # Reload to get ID
