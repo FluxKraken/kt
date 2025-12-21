@@ -620,3 +620,24 @@ class Actions:
             console.print(f"[green]Created directory {path}[/green]")
         except Exception as e:
             console.print(f"[red]Error creating directory {path}: {e}[/red]")
+
+    def delete(self, raw_path):
+        """Delete a file or directory recursively"""
+        if self.engine.mode == "GENERATE_CONFIG": return
+
+        path = self.f(raw_path)
+        
+        if not os.path.exists(path):
+            console.print(f"[yellow]Skipping delete '{path}', does not exist.[/yellow]")
+            return
+
+        try:
+            if os.path.isfile(path) or os.path.islink(path):
+                os.remove(path)
+                console.print(f"[green]Deleted file {path}[/green]")
+            elif os.path.isdir(path):
+                import shutil
+                shutil.rmtree(path)
+                console.print(f"[green]Deleted directory {path}[/green]")
+        except Exception as e:
+            console.print(f"[red]Error deleting {path}: {e}[/red]")

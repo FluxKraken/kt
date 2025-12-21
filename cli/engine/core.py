@@ -32,6 +32,7 @@ class RecipeEngine:
         r.gate = self.actions.gate
         r.touch = self.actions.touch
         r.mkdir = self.actions.mkdir
+        r.delete = self.actions.delete
         r.f = self.actions.f
         r.ref = self.actions.ref
         r.splice = self.actions.splice
