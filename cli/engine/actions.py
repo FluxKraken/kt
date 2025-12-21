@@ -621,11 +621,9 @@ class Actions:
         except Exception as e:
             console.print(f"[red]Error creating directory {path}: {e}[/red]")
 
-    def delete(self, raw_path):
+    def delete(self, path):
         """Delete a file or directory recursively"""
         if self.engine.mode == "GENERATE_CONFIG": return
-
-        path = self.f(raw_path)
         
         if not os.path.exists(path):
             console.print(f"[yellow]Skipping delete '{path}', does not exist.[/yellow]")
