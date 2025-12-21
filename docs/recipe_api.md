@@ -15,6 +15,7 @@ Recipes in `kt` are Lua scripts. The engine exposes a single global table `r` wi
 - `r.gate` — Ask for confirmation and store/use the answer.
 - `r.touch` — Create a file with optional content.
 - `r.mkdir` — Create directories (optionally with parents).
+- `r.delete` — Delete a file or directory recursively.
 - `r.f` / `r.ref` / `r.splice` — Formatting and lookups.
 
 ## Core Methods (with examples)
@@ -58,6 +59,7 @@ In EXECUTE mode, missing values trigger an editor prompt (respects `$EDITOR`/`$V
 Render a stored Jinja2 template to a file.
 
 Parameters:
+
 - `output` (required): Target path.
 - `overwrite` (bool): Replace existing file (default: `false`).
 - `context` (table): Values available to the template.
@@ -114,6 +116,7 @@ r.run({ "npm", "install" }, { cwd = r.f("$(project.name)") })
 Prompt for a boolean (returns the answer). In CONFIG mode it uses the default without prompting.
 
 Fields:
+
 - `prompt`: Question text.
 - `default`: Default boolean (optional, defaults to `true`).
 - `store`: Context key to persist the answer.
@@ -146,6 +149,20 @@ Create a directory.
 
 ```lua
 r.mkdir("$(project.name)/src", { parents = true })
+```
+
+### `r.delete(path)`
+
+Delete a file or directory recursively. Path interpolation requires explicit `r.f()`.
+
+- `path`: String path to delete.
+
+```lua
+-- Delete a single file
+r.delete("temp_file.txt")
+
+-- Delete a directory recursively (using variable)
+r.delete(r.f("$(project.name)/temp_dir"))
 ```
 
 ## Helper Methods
