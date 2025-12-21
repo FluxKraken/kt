@@ -407,6 +407,9 @@ class Actions:
             
         # Render
         try:
+             # Convert context to python objects to play nice with Jinja2
+             context = self._lua_to_python(context)
+
              from cli.engine.jinja_utils import render_template_with_shell
              rendered = render_template_with_shell(template_content, context)
              
