@@ -25,3 +25,7 @@ kt.add_command(template)
 kt.add_command(asset)
 kt.add_command(recipe)
 kt.add_command(bundle)
+
+from cli.commands.project import render_project
+kt.add_command(render_project, name="render")
+kt.add_command(render_project, name="r")
