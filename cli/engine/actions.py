@@ -44,7 +44,23 @@ class Actions:
     def ref(self, path):
          """Return value of variable at path"""
          val = self._resolve_var(path)
-         return val if val is not None else ""
+         if val is None: return ""
+         return self._python_to_lua_obj(val)
+
+    def _python_to_lua_obj(self, obj):
+        """Recursively convert Python dicts/lists to Lua tables"""
+        if isinstance(obj, dict):
+            # Convert dict to Lua table
+            # Recursively convert values
+            converted_dict = {k: self._python_to_lua_obj(v) for k, v in obj.items()}
+            return self.engine.lua.table_from(converted_dict)
+        elif isinstance(obj, (list, tuple)):
+            # Convert list to Lua table
+            # Lua tables are 1-indexed, but lupa.table_from handles list correctly as array-like table
+            converted_list = [self._python_to_lua_obj(v) for v in obj]
+            return self.engine.lua.table_from(converted_list)
+        else:
+            return obj
 
     def splice(self, path):
         """Return list at path"""
