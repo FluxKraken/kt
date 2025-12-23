@@ -29,9 +29,10 @@ class RecipeEngine:
         r.question = self.actions.question
         r.confirm = self.actions.confirm
         r.template = self.actions.template
-        r.assets = self.actions.assets
+        r.asset = self.actions.asset
         r.run = self.actions.run
         r.touch = self.actions.touch
+        r.eval = self.actions.eval
 
         r.mkdir = self.actions.mkdir
         r.delete = self.actions.delete

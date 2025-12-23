@@ -364,12 +364,13 @@ class Actions:
         if self.engine.mode == "GENERATE_CONFIG": return
 
         args = dict(args)
-        output = args.get("output")
+        # Support destination (preferred) or output (deprecated/fallback)
+        output = args.get("destination") or args.get("output")
         overwrite = args.get("overwrite", False)
         context = args.get("context", {})
         
         if not output:
-             console.print(f"[red]Template action missing output path.[/red]")
+             console.print(f"[red]Template action missing destination.[/red]")
              return
              
         # Resolve 'name'. Name might be "project::template_name" or just "template_name"
@@ -421,7 +422,7 @@ class Actions:
         except Exception as e:
             console.print(f"[red]Error rendering template {name}: {e}[/red]")
 
-    def assets(self, name, args):
+    def asset(self, name, args):
         """Copy asset"""
         if self.engine.mode == "GENERATE_CONFIG": return
         
@@ -468,6 +469,19 @@ class Actions:
         with open(destination, 'wb') as f:
             f.write(content)
         console.print(f"[green]Copied asset {destination}[/green]")
+
+    def eval(self, command):
+        """Run shell command and return stdout"""
+        # command is a string
+        if self.engine.mode == "GENERATE_CONFIG": return ""
+        
+        try:
+            # We use shell=True to support pipes etc if needed, be careful with security but this is a dev tool
+            output = subprocess.check_output(command, shell=True, text=True)
+            return output.strip()
+        except subprocess.CalledProcessError as e:
+            console.print(f"[red]Eval command failed: {e}[/red]")
+            return ""
 
     def recipe(self, name):
         """Execute another recipe"""

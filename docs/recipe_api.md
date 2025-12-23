@@ -11,7 +11,8 @@ Recipes in `kt` are Lua scripts. The engine exposes a single global table `r` wi
 - `r.question` — Prompt user for text input.
 - `r.confirm` — Prompt user for yes/no confirmation.
 - `r.template` — Render a Jinja2 template to disk.
-- `r.assets` — Copy a stored asset to disk.
+- `r.asset` — Copy a stored asset to disk.
+- `r.eval` — Execute a command and capture output.
 - `r.run` — Execute a command (`cmd`, `args`, `cwd`).
 - `r.touch` — Create a file with optional content.
 - `r.mkdir` — Create directories (optionally with parents).
@@ -84,13 +85,13 @@ Render a stored Jinja2 template to a file.
 
 Parameters:
 
-- `output` (required): Target path.
+- `destination` (required): Target path.
 - `overwrite` (bool): Replace existing file (default: `false`).
 - `context` (table): Values available to the template.
 
 ```lua
 r.template("flask::app", {
-  output = r.f("$(project.name)/app.py"),
+  destination = r.f("$(project.name)/app.py"),
   overwrite = true,
   context = {
     name = r.ref("project.name"),
@@ -99,7 +100,7 @@ r.template("flask::app", {
 })
 ```
 
-### `r.assets(name, table)`
+### `r.asset(name, table)`
 
 Copy a binary/text asset.
 
@@ -107,7 +108,7 @@ Copy a binary/text asset.
 - `overwrite` (bool): Replace if present.
 
 ```lua
-r.assets("flask::logo", {
+r.asset("flask::logo", {
   destination = r.f("$(project.name)/public/logo.png"),
   overwrite = true
 })
@@ -160,6 +161,18 @@ r.delete("temp_file.txt")
 
 -- Delete a directory recursively (using variable)
 r.delete(r.f("$(project.name)/temp_dir"))
+```
+
+### `r.eval(command)`
+
+Execute a shell command and return the output.
+
+- `command`: String command to execute.
+
+```lua
+r.touch(r.f("$(project.location)/.secrets/LOAD_BETTER_AUTH_SECRET.txt"), {
+    content = r.eval("openssl rand -base64 32")
+})
 ```
 
 ## Helper Methods
