@@ -14,7 +14,7 @@ class Actions:
     def __init__(self, engine):
         self.engine = engine
         self.collected_prompts = OrderedDict()
-        self.prompt_call_count = 0
+        self.config_call_count = 0
         
     def _resolve_var(self, path: str):
         """Resolve a dot-notation path in self.engine.context"""
@@ -110,16 +110,17 @@ class Actions:
         
         merge(self.engine.context, data)
 
-    def prompt(self, args):
-        """Handle prompting"""
+    def config(self, args):
+        """Handle configuration schema"""
         # args: dict of variable definitions
         schema = dict(args)
-        self.prompt_call_count += 1
+        self.config_call_count += 1
 
-        # Heuristic to find the correct r.prompt block in the script
-        prompts_found = list(re.finditer(r'r\.prompt\s*\(\{', self.engine.script_content))
-        if len(prompts_found) >= self.prompt_call_count:
-            start_index = prompts_found[self.prompt_call_count - 1].start()
+        # Heuristic to find the correct r.config block in the script
+        # We search for r.config to preserve order of keys for TOML generation
+        configs_found = list(re.finditer(r'r\.config\s*\(\{', self.engine.script_content))
+        if len(configs_found) >= self.config_call_count:
+            start_index = configs_found[self.config_call_count - 1].start()
             # Find the actual content between the parentheses
             block_start = -1
             depth = 0
@@ -140,9 +141,9 @@ class Actions:
                     end_index = i
                     break
             
-            prompt_block = self.engine.script_content[block_start:end_index] if (end_index != -1 and block_start != -1) else ""
+            config_block = self.engine.script_content[block_start:end_index] if (end_index != -1 and block_start != -1) else ""
         else:
-            prompt_block = ""
+            config_block = ""
 
         def parse_lua_block(text):
             """
@@ -162,12 +163,6 @@ class Actions:
             value_start = -1
             parsing_value = False
             
-            # To handle r.prompt({ ... }), we need to know the baseline depth/parens
-            # But simpler: just track depth relative to start.
-            # We assume the keys we want are at the "first level of braces" we encounter.
-            # Or if text starts with {, keys are at depth 1.
-            # If text is r.prompt({, keys are at depth 1.
-            
             target_depth = 1
             
             while i < len(text):
@@ -178,10 +173,10 @@ class Actions:
                     if char in ("'", '"'):
                         in_string = char
                     elif text[i:i+2] == '--':
-                        while i < len(text) and text[i] != '\n': i += 1
+                        while i < len(text) and text[i] != '\\n': i += 1
                         continue
                 elif char == in_string:
-                     if text[i-1] == '\\' and text[i-2] != '\\': pass
+                     if text[i-1] == '\\\\' and text[i-2] != '\\\\': pass
                      else: in_string = None
                 
                 if not in_string:
@@ -194,11 +189,7 @@ class Actions:
                 if parsing_value:
                     if not in_string:
                         # Value ends at comma/semicolon at same depth as key
-                        # OR if block ends (depth drops < target_depth)
-                        is_separator = (char in (',', ';') and depth == target_depth and parens == 0) # Assuming keys at parens=0 or balanced
-                        # Actually parens might be non-zero if r.prompt({...})
-                        # But within the table, parens should be balanced relative to key start?
-                        # Let's just say value ends at ,; if depth matches.
+                        is_separator = (char in (',', ';') and depth == target_depth and parens == 0)
                         
                         is_end_of_block = (depth < target_depth)
                         
@@ -209,15 +200,6 @@ class Actions:
                             curr_key = None
                 else:
                     # Looking for key
-                    # We expect keys at target_depth.
-                    # We allow target_depth to be inferred from first { if depth 0.
-                    
-                    if not in_string:
-                        # Identify target depth if not set? 
-                        # If text starts with 'r.prompt', depth is 0 initially.
-                        # We want keys inside the { }.
-                        pass
-                        
                     if not in_string and depth == target_depth:
                          # Attempt match key
                          match = ident_re.match(text[i:])
@@ -258,7 +240,6 @@ class Actions:
         # Recursive helper to process schema
         def process_node(node_schema, current_path=None, block_text=""):
             result = OrderedDict()
-            has_prompt = False
             
             node_dict = dict(node_schema)
             keys_to_process = [k for k in node_dict.keys() if k != "_comment"]
@@ -288,7 +269,6 @@ class Actions:
                     curr_val = self._resolve_var(full_path)
                     
                     if curr_val is None:
-                        has_prompt = True
                         result[key] = self._lua_to_python(val_dict.get('default'))
                     else:
                         result[key] = self._lua_to_python(curr_val)
@@ -299,18 +279,15 @@ class Actions:
                     
                     nested_block = parsed_block_map.get(key, "")
 
-                    child_result, child_has_prompt = process_node(val_dict, new_path, nested_block)
-                    if child_has_prompt:
-                        has_prompt = True
+                    child_result = process_node(val_dict, new_path, nested_block)
                     result[key] = child_result
             
-            return result, has_prompt
+            return result
+
+        defaults_data = process_node(schema, block_text=config_block)
 
         if self.engine.mode == "GENERATE_CONFIG":
-            # Just accumulate defaults into context
-             defaults, _ = process_node(schema, block_text=prompt_block)
-             
-             # We need to merge defaults deep into context AND collected_prompts
+             # We need to merge defaults into collected_prompts
              def deep_merge(target, source):
                  for k, v in source.items():
                      if isinstance(v, dict):
@@ -322,49 +299,65 @@ class Actions:
                      else:
                          target[k] = v
                           
-             deep_merge(self.engine.context, defaults)
-             deep_merge(self.collected_prompts, defaults)
+             deep_merge(self.collected_prompts, defaults_data)
+             # Also merge into context so references work if needed during config gen (unlikely but safe)
+             deep_merge(self.engine.context, defaults_data)
              return
 
         # EXECUTE MODE
-        defaults_data, needs_prompt = process_node(schema, block_text=prompt_block)
+        # Check if context has values, if not use defaults
+        def deep_merge_defaults(target, source):
+            for k, v in source.items():
+                if isinstance(v, dict):
+                    if k not in target: target[k] = OrderedDict()
+                    if isinstance(target[k], dict):
+                         deep_merge_defaults(target[k], v)
+                else:
+                    if k not in target:
+                        target[k] = v
+        
+        deep_merge_defaults(self.engine.context, defaults_data)
 
-        if needs_prompt:
-             # Create temp toml
-             header = "# Please fill in the values.\n\n"
-             toml_str = toml.dumps(defaults_data)
-             
-             new_toml = click.edit(header + toml_str, extension=".toml")
-             if new_toml:
-                 new_data = toml.loads(new_toml)
-                 # Merge back into context
-                 def deep_merge(target, source):
-                     for k, v in source.items():
-                         if isinstance(v, dict):
-                             if k not in target: target[k] = OrderedDict()
-                             if isinstance(target[k], dict):
-                                 deep_merge(target[k], v)
-                             else:
-                                 target[k] = v
-                         else:
-                             target[k] = v
-                 deep_merge(self.engine.context, new_data)
-             else:
-                 console.print("[yellow]No input provided, using defaults.[/yellow]")
-                 # Merge defaults
-                 def deep_merge(target, source):
-                     for k, v in source.items():
-                         if isinstance(v, dict):
-                             if k not in target: target[k] = OrderedDict()
-                             if isinstance(target[k], dict):
-                                 deep_merge(target[k], v)
-                             else:
-                                 target[k] = v
-                         else:
-                             target[k] = v
-                 deep_merge(self.engine.context, defaults_data)
-        else:
-            pass
+    def question(self, args):
+        """Ask a question and return the answer"""
+        args = dict(args)
+        prompt_text = args.get("prompt", "Value:")
+        default = args.get("default")
+        store = args.get("store")
+
+        if self.engine.mode == "GENERATE_CONFIG": 
+            return default if default is not None else ""
+        
+        # Check if stored variable exists? User might want to overwrite or if missing invoke question.
+        # But 'question' implies interaction.
+        # If the user script calls r.question, it MEANS ask.
+        # Unless we want non-interactive mode?
+        # For now, always ask.
+        
+        val = click.prompt(prompt_text, default=default)
+        
+        if store:
+            self.engine.context[store] = val
+            
+        return val
+
+    def confirm(self, args):
+        """Ask for confirmation"""
+        args = dict(args)
+        prompt_text = args.get("prompt", "Continue?")
+        default = args.get("default", False)
+        store = args.get("store")
+
+        if self.engine.mode == "GENERATE_CONFIG": 
+             return default
+        
+        # In Execute mode
+        val = click.confirm(prompt_text, default=default)
+        
+        if store:
+            self.engine.context[store] = val
+        
+        return val
 
     def template(self, name, args):
         """Render template"""
@@ -505,11 +498,11 @@ class Actions:
 
         # Save current state
         old_content = self.engine.script_content
-        old_count = self.prompt_call_count
+        old_count = self.config_call_count
         
         # Set new state
         self.engine.script_content = recipe_content
-        self.prompt_call_count = 0
+        self.config_call_count = 0
         
         try:
             # Execute
@@ -520,26 +513,8 @@ class Actions:
         finally:
             # Restore state
             self.engine.script_content = old_content
-            self.prompt_call_count = old_count
+            self.config_call_count = old_count
 
-    def command(self, args, func):
-        """Command block"""
-        args = dict(args)
-        check_var = args.get("check")
-        
-        if check_var:
-            val = self._resolve_var(check_var)
-            if not val:
-                return # Skip
-        
-        # Execute the Lua function block
-        # In Lupa, 'func' is a Lua function. We call it.
-        if self.engine.mode == "GENERATE_CONFIG": 
-            # Do we execute command blocks in config gen mode?
-            # Probably not, as they contain r.run() side effects.
-            return
-            
-        func()
 
     def run(self, cmd_args, options=None):
         """Run subprocess"""
@@ -563,33 +538,6 @@ class Actions:
         except subprocess.CalledProcessError as e:
             console.print(f"[red]Command failed: {e}[/red]")
             # Should we raise? use 'gate'?
-
-    def gate(self, args):
-        """Gate execution via user prompt"""
-        args = dict(args)
-        prompt_text = args.get("prompt", "Continue?")
-        default = args.get("default", True)
-        store = args.get("store")
-        
-        if self.engine.mode == "GENERATE_CONFIG":
-             # Use default
-             if store:
-                 self.engine.context[store] = default
-             return default
-
-        # In Execute mode
-        # If variable already exists (e.g. from config), use it?
-        # Gate usually implies "ask now", but if we want reproducibility...
-        # Let's check context first?
-        if store and store in self.engine.context:
-             return self.engine.context[store]
-             
-        response = click.confirm(prompt_text, default=default)
-        
-        if store:
-            self.engine.context[store] = response
-            
-        return response
 
     def touch(self, raw_path, options=None):
         """Create a file with optional content"""

@@ -11,15 +11,14 @@
 - **Binary-friendly assets**: Ship icons, fonts, and other non-text files alongside templates.
 - **Shell commands inside templates**: `{>command<}` tags capture shell output during rendering.
 
-> [!WARNING]
-> `{>command<}` blocks can execute arbitrary shell commands, so be careful!  Only execute templates from sources that you trust, and never run anything without verifying it first!!
+> [!WARNING] > `{>command<}` blocks can execute arbitrary shell commands, so be careful! Only execute templates from sources that you trust, and never run anything without verifying it first!!
 
 ## What lives where?
 
-- **Data store**: SQLite database created under your app data directory.  OS Appropriate Location, e.g. (~/Library/Application Support/kt) on MacOS.
+- **Data store**: SQLite database created under your app data directory. OS Appropriate Location, e.g. (~/Library/Application Support/kt) on MacOS.
 - **Key resource types**:
   - Templates (Jinja2 extended with `{>command<}` shell command substitution.).
-  - Recipes (Lua DSL; prompt → template render → command execution).
+  - Recipes (Lua DSL; config/question/confirm → template render → command execution).
   - Assets (binary or text blobs).
 - **Bundles**: `.project` archives containing `project.json`, `templates/`, `recipes/`, and `assets/`.
 

@@ -34,7 +34,7 @@ r.declare({
 -- -----------------------------
 -- Get Project Configuration
 -- -----------------------------
-r.prompt({
+r.config({
   project = {
     _comment = "Project Info",
     title       = { default = "SvelteKit Project", comment = "Project Title" },
@@ -90,46 +90,40 @@ r.assets("sveltekit::logo.png", {
 -- -----------------------------
 -- Create Git Repository (optional)
 -- -----------------------------
-r.command({}, function()
-  r.gate({ prompt = "Create Git Repository?", default = true, store = "git" })
-
+if r.confirm({ prompt = "Create Git Repository?", default = true, store = "git" }) then
   r.run({ "git", "init" }, { cwd = r.ref("project.location") })
   r.run({ "git", "-C", r.f("$(project.location)"), "add", ".gitignore", "README.md" })
   r.run({ "git", "-C", r.f("$(project.location)"), "commit", "-m", "Initial Commit" })
-end)
+end
 
 -- -----------------------------
 -- Generate SvelteKit Project
 -- -----------------------------
-r.command({}, function()
-  r.run({
-    "npx", "sv", "create",
-    "--template", "minimal",
-    "--types", "ts",
-    "--add", "sveltekit-adapter=adapter:node",
-    "--add", "tailwindcss=plugins:none",
-    "--install", "npm",
-    r.f("$(project.location)"),
-  })
-end)
+r.run({
+  "npx", "sv", "create",
+  "--template", "minimal",
+  "--types", "ts",
+  "--add", "sveltekit-adapter=adapter:node",
+  "--add", "tailwindcss=plugins:none",
+  "--install", "npm",
+  r.f("$(project.location)"),
+})
 
-r.command({ check = "git" }, function()
+if r.ref("git") then
   r.run({ "git", "-C", r.f("$(project.location)"), "add", "." })
   r.run({ "git", "-C", r.f("$(project.location)"), "commit", "-m", "Generate SvelteKit Project" })
-end)
+end
 
 -- -----------------------------
 -- Install Project Dependencies
 -- -----------------------------
-r.command({}, function()
-  r.run({ "npm", "--prefix", r.f("$(project.location)"), "install", r.splice("dependencies.prod") })
-  r.run({ "npm", "--prefix", r.f("$(project.location)"), "install", "--save-dev", r.splice("dependencies.dev") })
-end)
+r.run({ "npm", "--prefix", r.f("$(project.location)"), "install", r.splice("dependencies.prod") })
+r.run({ "npm", "--prefix", r.f("$(project.location)"), "install", "--save-dev", r.splice("dependencies.dev") })
 
-r.command({ check = "git" }, function()
+if r.ref("git") then
   r.run({ "git", "-C", r.f("$(project.location)"), "add", "." })
   r.run({ "git", "-C", r.f("$(project.location)"), "commit", "-m", "Update Project Dependencies" })
-end)
+end
 
 -- -----------------------------
 -- Configure Project
@@ -180,7 +174,7 @@ r.template("sveltekit::env", {
   },
 })
 
-r.command({ check = "git" }, function()
+if r.ref("git") then
   r.run({ "git", "-C", r.f("$(project.location)"), "add", "." })
   r.run({ "git", "-C", r.f("$(project.location)"), "commit", "-m", "Configure Project & Set up docker dev environment" })
-end)
+end

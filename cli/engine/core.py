@@ -23,14 +23,16 @@ class RecipeEngine:
         r = self.lua.table()
         
         # Bind actions
+        # Bind actions
         r.declare = self.actions.declare
-        r.prompt = self.actions.prompt
+        r.config = self.actions.config
+        r.question = self.actions.question
+        r.confirm = self.actions.confirm
         r.template = self.actions.template
         r.assets = self.actions.assets
-        r.command = self.actions.command
         r.run = self.actions.run
-        r.gate = self.actions.gate
         r.touch = self.actions.touch
+
         r.mkdir = self.actions.mkdir
         r.delete = self.actions.delete
         r.f = self.actions.f

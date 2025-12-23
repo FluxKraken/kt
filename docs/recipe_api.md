@@ -7,12 +7,12 @@ Recipes in `kt` are Lua scripts. The engine exposes a single global table `r` wi
 ## Quick Cheat Sheet
 
 - `r.declare` — Seed context with defaults.
-- `r.prompt` — Collect user input (or emit defaults when generating config).
+- `r.config` — Define configuration schema and defaults.
+- `r.question` — Prompt user for text input.
+- `r.confirm` — Prompt user for yes/no confirmation.
 - `r.template` — Render a Jinja2 template to disk.
 - `r.assets` — Copy a stored asset to disk.
-- `r.command` — Group shell actions (optional `check` gate).
 - `r.run` — Execute a command (`cmd`, `args`, `cwd`).
-- `r.gate` — Ask for confirmation and store/use the answer.
 - `r.touch` — Create a file with optional content.
 - `r.mkdir` — Create directories (optionally with parents).
 - `r.delete` — Delete a file or directory recursively.
@@ -31,15 +31,15 @@ r.declare({
 })
 ```
 
-### `r.prompt(table)`
+### `r.config(table)`
 
-Ask for values (or emit them to the generated config file).
+Define configuration schema and defaults. Used for `kt recipe render --output` to generate TOML.
 
 - `default`: Value written to the config file.
 - `_comment`: A description that appears above the key in the generated TOML.
 
 ```lua
-r.prompt({
+r.config({
   project = {
     name = { default = "My Project" },
     version = { default = "0.1.0" }
@@ -52,7 +52,31 @@ r.prompt({
 })
 ```
 
-In EXECUTE mode, missing values trigger an editor prompt (respects `$EDITOR`/`$VISUAL`).
+### `r.question(table)`
+
+Ask the user for text input.
+
+- `prompt`: Question text.
+- `default`: Default value if user presses Enter.
+- `store`: Context key to persist the answer.
+
+```lua
+local name = r.question({ prompt = "What is your name?", default = "User", store = "user.name" })
+```
+
+### `r.confirm(table)`
+
+Ask for a yes/no confirmation.
+
+- `prompt`: Question text.
+- `default`: Default boolean (optional, defaults to `false`).
+- `store`: Context key to persist the answer.
+
+```lua
+if r.confirm({ prompt = "Initialize Git?", store = "use_git", default = true }) then
+  r.run({ "git", "init" })
+end
+```
 
 ### `r.template(name, table)`
 
@@ -89,17 +113,6 @@ r.assets("flask::logo", {
 })
 ```
 
-### `r.command(options, function)`
-
-Group one or more `r.run` calls. If `check` is provided and resolves to falsy, the block is skipped.
-
-```lua
-r.command({ check = "use_git" }, function()
-  r.run({ "git", "init" })
-  r.run({ "git", "add", "." })
-end)
-```
-
 ### `r.run(args, options)`
 
 Run a subprocess.
@@ -109,22 +122,6 @@ Run a subprocess.
 
 ```lua
 r.run({ "npm", "install" }, { cwd = r.f("$(project.name)") })
-```
-
-### `r.gate(table)`
-
-Prompt for a boolean (returns the answer). In CONFIG mode it uses the default without prompting.
-
-Fields:
-
-- `prompt`: Question text.
-- `default`: Default boolean (optional, defaults to `true`).
-- `store`: Context key to persist the answer.
-
-```lua
-if r.gate({ prompt = "Initialize Git?", store = "use_git", default = true }) then
-  r.run({ "git", "init" })
-end
 ```
 
 ### `r.touch(path, options)`
@@ -184,24 +181,24 @@ r.delete(r.f("$(project.name)/temp_dir"))
 
 ```lua
 r.declare({
-  dependencies = { prod = { "click", "rich" } }
-})
+   dependencies = { prod = { "click", "rich" } }
+ })
 
-r.prompt({
-  project = { name = { default = "demo-app" } },
-  python = { version = { default = "3.12" } }
-})
+ r.config({
+   project = { name = { default = "demo-app" } },
+   python = { version = { default = "3.12" } }
+ })
 
-r.mkdir("$(project.name)", { parents = true })
-r.template("demo::app", {
-  output = r.f("$(project.name)/app.py"),
-  context = { python_version = r.ref("python.version") }
-})
+ r.mkdir("$(project.name)", { parents = true })
+ r.template("demo::app", {
+   output = r.f("$(project.name)/app.py"),
+   context = { python_version = r.ref("python.version") }
+ })
 
-r.command({}, function()
-  r.run({ "python", "-m", "venv", r.f("$(project.name)/.venv") })
-  r.run({ r.f("$(project.name)/.venv/bin/pip"), "install", r.splice("dependencies.prod") })
-end)
+ if r.confirm({ prompt = "Create virtualenv?", default = true }) then
+   r.run({ "python", "-m", "venv", r.f("$(project.name)/.venv") })
+   r.run({ r.f("$(project.name)/.venv/bin/pip"), "install", r.splice("dependencies.prod") })
+ end
 ```
 
 Generate a config:
