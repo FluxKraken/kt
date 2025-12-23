@@ -12,6 +12,7 @@
 ---@field touch fun(path: string, options?: table) Create a file with optional content.
 ---@field mkdir fun(path: string, options?: table) Create a directory.
 ---@field delete fun(path: string) Delete a file or directory recursively.
+---@field recipe fun(name: string, options?: table) Execute another recipe.
 ---@field f fun(str: string): string Format using `$(var.path)` substitution from context.
 ---@field ref fun(path: string): any Read a context value (returns `""` if missing).
 ---@field splice fun(path: string): table Return a list-like value suitable for spreading into commands.
