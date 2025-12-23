@@ -8,7 +8,7 @@
 ---@field template fun(name: string, table: table) Render a stored Jinja2 template to a file.
 ---@field asset fun(name: string, table: table) Copy a binary/text asset.
 ---@field eval fun(command: string): string Execute a shell command and return the output.
----@field run fun(args: string[], options?: table) Run a subprocess.
+---@field run fun(args: (string|table)[], options?: table) Run a subprocess.
 ---@field touch fun(path: string, options?: table) Create a file with optional content.
 ---@field mkdir fun(path: string, options?: table) Create a directory.
 ---@field delete fun(path: string) Delete a file or directory recursively.
