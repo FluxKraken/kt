@@ -17,12 +17,6 @@ uv tool install https://github.com/FluxKraken/kt.git
 kt --help   # verify installation
 ```
 
-Initialize the local database (stored in your platform’s app data directory):
-
-```bash
-kt init
-```
-
 > **Tip:** All commands accept `--help` for on-demand usage details.
 
 ## Project Management

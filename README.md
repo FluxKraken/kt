@@ -34,26 +34,20 @@ After installing, you can invoke the CLI via `kt`.
 
 ## Core Workflow (Quick Tour)
 
-1. **Initialize the local database** (if not already done, happens automatically on first run):
-
-   ```bash
-   kt init
-   ```
-
-2. **Create a project namespace**:
+1. **Create a project namespace**:
 
    ```bash
    kt new --project my-stack
    ```
 
-3. **Import a Lua recipe and a template** (assigning them to the project):
+2. **Import a Lua recipe and a template** (assigning them to the project):
 
    ```bash
    kt import --recipe init --file ./init.lua --project my-stack
    kt import --template service --file ./service.j2 --project my-stack
    ```
 
-4. **Draft a config from the recipe’s prompts**:
+3. **Draft a config from the recipe’s prompts**:
 
    ```bash
    kt recipe init --project my-stack --create-config config.toml
@@ -61,9 +55,9 @@ After installing, you can invoke the CLI via `kt`.
 
    _Alternatively_: `kt r my-stack --create-config config.toml` (if `init` is the default recipe for `my-stack`)
 
-5. **Fill in `config.toml`** (the file is pre-populated with defaults declared in the recipe).
+4. **Fill in `config.toml`** (the file is pre-populated with defaults declared in the recipe).
 
-6. **Execute the scaffold**:
+5. **Execute the scaffold**:
 
    ```bash
    kt recipe init --project my-stack --config config.toml
@@ -71,7 +65,7 @@ After installing, you can invoke the CLI via `kt`.
 
    _Alternatively_: `kt r my-stack --config config.toml`
 
-7. **Bundle and share** everything as a single archive:
+6. **Bundle and share** everything as a single archive:
 
    ```bash
    kt bundle create --project my-stack --output ./my-stack.project
