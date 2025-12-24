@@ -34,7 +34,7 @@ After installing, you can invoke the CLI via `kt`.
 
 ## Core Workflow (Quick Tour)
 
-1. **Initialize the local database** (creates `kt.db` under your app data dir):
+1. **Initialize the local database** (if not already done, happens automatically on first run):
 
    ```bash
    kt init
@@ -43,34 +43,38 @@ After installing, you can invoke the CLI via `kt`.
 2. **Create a project namespace**:
 
    ```bash
-   kt project add my-stack
+   kt new --project my-stack
    ```
 
 3. **Import a Lua recipe and a template** (assigning them to the project):
 
    ```bash
-   kt recipe import ./init.lua --project my-stack --name init
-   kt template import ./service.j2 --project my-stack --name service
+   kt import --recipe init --file ./init.lua --project my-stack
+   kt import --template service --file ./service.j2 --project my-stack
    ```
 
 4. **Draft a config from the recipe’s prompts**:
 
    ```bash
-   kt recipe render init --project my-stack --output config.toml
+   kt recipe init --project my-stack --create-config config.toml
    ```
+
+   _Alternatively_: `kt r my-stack --create-config config.toml` (if `init` is the default recipe for `my-stack`)
 
 5. **Fill in `config.toml`** (the file is pre-populated with defaults declared in the recipe).
 
 6. **Execute the scaffold**:
 
    ```bash
-   kt recipe render init --project my-stack --config config.toml
+   kt recipe init --project my-stack --config config.toml
    ```
+
+   _Alternatively_: `kt r my-stack --config config.toml`
 
 7. **Bundle and share** everything as a single archive:
 
    ```bash
-   kt project export my-stack --output ./my-stack.project
+   kt bundle create --project my-stack --output ./my-stack.project
    ```
 
 ## Practical Examples
@@ -78,28 +82,30 @@ After installing, you can invoke the CLI via `kt`.
 - **Render a template straight to disk** (prompts for missing values via your editor):
 
   ```bash
-  kt template render service --project my-stack --output ./build/service.py
+  kt template service --project my-stack --destination ./build/service.py
   ```
 
 - **Generate a config skeleton for a template** (inspect required variables before rendering):
 
   ```bash
-  kt template render service --project my-stack --gen-config ./service.defaults.toml
+  kt template service --project my-stack --create-config ./service.defaults.toml
   ```
 
 - **Copy a binary asset into your project**:
 
   ```bash
-  kt asset add logo --file ./logo.png --project my-stack
+  kt import --asset logo --file ./logo.png --project my-stack
   # later
-  kt recipe render init --project my-stack --config config.toml
+  kt recipe init --project my-stack --config config.toml
   ```
 
 - **Expand a bundle you received** (without importing into the database):
 
   ```bash
-  kt bundle expand ./starter.project ./unpacked --overwrite
+  kt bundle expand ./starter.project --destination ./unpacked --overwrite
   ```
+
+  _Alternatively using import_: `kt import --bundle ./starter.project` (Imports into DB)
 
 ## Documentation
 
