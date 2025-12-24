@@ -2,7 +2,7 @@
 
 Recipes in `kt` are Lua scripts. The engine exposes a single global table `r` with helpers for collecting input, rendering templates, copying assets, and running commands.
 
-> **Execution modes:** `kt recipe render ... --output` runs in **GENERATE_CONFIG** mode (defaults only, no side effects). Supplying `--config` switches to **EXECUTE** mode (runs commands, writes files).
+> **Execution modes:** `kt r ... --create-config` runs in **GENERATE_CONFIG** mode (defaults only, no side effects). Supplying `--config` switches to **EXECUTE** mode (runs commands, writes files).
 
 ## Quick Cheat Sheet
 
@@ -34,7 +34,7 @@ r.declare({
 
 ### `r.config(table)`
 
-Define configuration schema and defaults. Used for `kt recipe render --output` to generate TOML.
+Define configuration schema and defaults. Used for `kt r ... --create-config` to generate TOML.
 
 - `default`: Value written to the config file.
 - `_comment`: A description that appears above the key in the generated TOML.
@@ -217,11 +217,11 @@ r.declare({
 Generate a config:
 
 ```bash
-kt recipe render scaffold --project demo --output ./config.toml
+kt r scaffold --project demo --create-config ./config.toml
 ```
 
 Execute with filled config:
 
 ```bash
-kt recipe render scaffold --project demo --config ./config.toml
+kt r scaffold --project demo --config ./config.toml
 ```

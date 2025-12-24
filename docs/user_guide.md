@@ -34,17 +34,17 @@ Projects keep resources scoped and organized.
 kt project list
 
 # Create a project namespace
-kt project add my-stack
+kt new --project my-stack
 
 # Delete a project (use --recursive to remove its resources)
-kt project delete my-stack --recursive
+kt delete --project my-stack --recursive
 ```
 
 ### Importing & Exporting Projects
 
-- **Import from bundle**: `kt project import ./starter.project --overwrite`
-- **Import from folder**: `kt project import ./starter-folder --overwrite`
-- **Export to bundle**: `kt project export my-stack --output ./my-stack.project`
+- **Import from bundle**: `kt import --bundle ./starter.project --overwrite`
+- **Import from folder**: `kt import --dir ./starter-folder --overwrite`
+- **Export to bundle**: `kt bundle ./ --destination ./my-stack.project`
 
 > Bundles are tar.gz archives. They keep file names and project metadata so you can rehydrate a stack elsewhere.
 
@@ -56,19 +56,19 @@ Common flows:
 
 ```bash
 # List templates (unscoped or within a project)
-kt template list --project my-stack
+kt template --project my-stack
 
-# Add a template (opens your $EDITOR)
-kt template add service --project my-stack
+# Add a template (creates a new empty one)
+kt new --template service --project my-stack
 
 # Import an existing file as a template
-kt template import ./service.j2 --project my-stack --name service
+kt import --template ./service.j2 --project my-stack --name service
 
 # Generate a config skeleton for required variables
-kt template render service --project my-stack --gen-config ./service.defaults.toml
+kt template service --project my-stack --create-config ./service.defaults.toml
 
 # Render to disk (prompts for missing values if needed)
-kt template render service --project my-stack --output ./build/service.py
+kt template service --project my-stack --destination ./build/service.py
 ```
 
 Shell command blocks allow dynamic content:
@@ -86,14 +86,14 @@ Recipes orchestrate prompting, templating, and execution. Each recipe can either
 
 ```bash
 # List or import recipes
-kt recipe list --project my-stack
-kt recipe import ./init.lua --project my-stack --name init
+kt recipe --project my-stack
+kt import --recipe ./init.lua --project my-stack --name init
 
 # Generate a TOML config file from prompts
-kt recipe render init --project my-stack --output ./config.toml
+kt r init --project my-stack --create-config ./config.toml
 
 # Execute using a prepared config
-kt recipe render init --project my-stack --config ./config.toml
+kt r init --project my-stack --config ./config.toml
 ```
 
 Quick sample recipe (Lua):
@@ -124,10 +124,10 @@ Assets keep non-text resources alongside templates.
 
 ```bash
 # List assets
-kt asset list --project my-stack
+kt asset --project my-stack
 
 # Add a binary asset
-kt asset add logo --file ./logo.png --project my-stack
+kt import --asset ./logo.png --project my-stack --name logo
 
 # Use assets in recipes
 r.assets("my-stack::logo", { destination = r.f("$(project.name)/public/logo.png") })
@@ -138,19 +138,19 @@ r.assets("my-stack::logo", { destination = r.f("$(project.name)/public/logo.png"
 Bundles pack everything needed to rehydrate a stack.
 
 ```bash
-# Initialize a new on-disk bundle structure with examples
-kt bundle init ./starter
+# Initialize a new project structure (optional)
+kt init ./starter
 
-# Create a .project archive from a folder (defaults to project.json name)
-kt bundle create ./starter --file ./starter.project
+# Create a .project archive from a folder
+kt bundle ./starter --destination ./starter.project
 
-# Expand a received .project archive without importing to the DB
-kt bundle expand ./starter.project ./expanded --overwrite
+# Import a received .project archive
+kt import --bundle ./starter.project --overwrite
 ```
 
 ## End-to-End Example
 
-1) Create project & import resources:
+1. Create project & import resources:
 
 ```bash
 kt project add flask-app
@@ -159,7 +159,7 @@ kt asset add logo --file ./logo.png --project flask-app
 kt recipe import ./scaffold.lua --project flask-app --name scaffold
 ```
 
-2) Generate config, edit, then execute:
+2. Generate config, edit, then execute:
 
 ```bash
 kt recipe render scaffold --project flask-app --output ./flask-config.toml
@@ -167,7 +167,7 @@ ${EDITOR:-vi} ./flask-config.toml
 kt recipe render scaffold --project flask-app --config ./flask-config.toml
 ```
 
-3) Share it:
+3. Share it:
 
 ```bash
 kt project export flask-app --output ./flask-app.project
