@@ -13,7 +13,8 @@ console = Console()
 @click.option("--project", help="Project name")
 @click.option("--config", help="TOML config file")
 @click.option("--create-config", help="Path to create a new config file")
-def recipe(name, project, config, create_config):
+@click.option("--set-default", is_flag=True, help="Set as default recipe for the project")
+def recipe(name, project, config, create_config, set_default):
     """Executes the specified recipe (or lists recipes if no name)."""
     
     with get_session() as session:
@@ -25,6 +26,43 @@ def recipe(name, project, config, create_config):
                 console.print(f"[red]Project '{project}' not found.[/red]")
                 return
             project_id = proj.id
+
+        if set_default:
+            if not name:
+                console.print("[red]Recipe name is required to set as default.[/red]")
+                return
+            if not project:
+                console.print("[red]Project name is required to set a default recipe (--project).[/red]")
+                return
+            
+            proj = session.exec(select(Project).where(Project.name == project)).first()
+            if not proj:
+                 console.print(f"[red]Project '{project}' not found.[/red]")
+                 return
+            
+            # Verify recipe exists in project?
+            # The prompt implies we set it. It doesn't explicitly say we must verify it exists, but it's good practice.
+            # However, standard behavior for things like this might permit setting it even if not strictly "assigned" yet?
+            # But normally we want it to be valid.
+            # Let's check if the recipe exists either assigned or we can assume the user knows.
+            # Safest is to check if it exists in the system or project.
+            # Implementation plan said: "Update the Project record's default_recipe field."
+            
+            # Let's verify it exists in the DB first at least
+            # Check if execution logic checks for project_id.
+            # "rec = session.exec(select(Recipe).where(Recipe.name == name).where(Recipe.project_id == project_id)).first()"
+            # If we enforce it must be in the project:
+            
+            rec = session.exec(select(Recipe).where(Recipe.name == name).where(Recipe.project_id == proj.id)).first()
+            if not rec:
+                 console.print(f"[red]Recipe '{name}' not found in project '{project}'. Please assign it first.[/red]")
+                 return
+
+            proj.default_recipe = name
+            session.add(proj)
+            session.commit()
+            console.print(f"[green]Default recipe for project '{project}' set to '{name}'.[/green]")
+            return
 
         if not name:
             # LIST MODE

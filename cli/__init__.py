@@ -38,5 +38,6 @@ kt.add_command(asset)
 kt.add_command(assign_cmd, name="assign")
 kt.add_command(unassign_cmd, name="unassign")
 kt.add_command(delete_cmd, name="delete")
+kt.add_command(project)
 
 
