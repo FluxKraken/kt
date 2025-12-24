@@ -20,8 +20,8 @@ def init_cmd(path):
         target_path.mkdir(parents=True, exist_ok=True)
         
         # Locate the misc directory relative to this file
-        # init_cmd.py is in cli/commands/, so we go up 3 levels to root, then misc
-        root_dir = Path(__file__).resolve().parent.parent.parent
+        # init_cmd.py is in cli/commands/, so we go up 2 levels to cli, then misc
+        root_dir = Path(__file__).resolve().parent.parent
         misc_dir = root_dir / "misc"
         
         if misc_dir.exists() and misc_dir.is_dir():
