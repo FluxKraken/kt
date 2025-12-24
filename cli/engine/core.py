@@ -16,6 +16,7 @@ class RecipeEngine:
         self.mode = mode
         self.actions = Actions(self)
         self.script_content = ""
+        self.config_template = None
         
     def execute(self, script_content: str):
         self.script_content = script_content
@@ -76,11 +77,29 @@ class RecipeEngine:
                             result[k] = v
                 return result
 
-            final_output = deep_filter(self.actions.collected_prompts, self.context)
-            
-            # Use toml.dump with OrderedDict support if possible
-            # Standard toml library supports OrderedDict if passed directly
-            with open(output_path, 'w') as f:
-                toml.dump(final_output, f)
+            if self.config_template:
+                # Render using the stored template logic
+                # We need to render the template with the collected context
+                from cli.engine.jinja_utils import render_template_with_shell
+                
+                # Combine collected prompts and context
+                render_context = self.context.copy()
+                render_context.update(self.actions.collected_prompts)
+                
+                # Convert to python objects for Jinja
+                render_context = self.actions._lua_to_python(render_context)
+                
+                rendered = render_template_with_shell(self.config_template, render_context)
+                
+                with open(output_path, 'w') as f:
+                    f.write(rendered)
+            else:
+                final_output = deep_filter(self.actions.collected_prompts, self.context)
+                
+                # Use toml.dump with OrderedDict support if possible
+                # Standard toml library supports OrderedDict if passed directly
+                with open(output_path, 'w') as f:
+                    toml.dump(final_output, f)
+
             return True
         return False

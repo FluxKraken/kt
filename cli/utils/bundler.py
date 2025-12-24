@@ -95,6 +95,11 @@ def import_project_from_dir(root_dir: str, overwrite: bool = False):
         if existing:
             if not overwrite:
                 raise FileExistsError(f"Project '{project_name}' already exists.")
+            # Update project metadata
+            existing.default_recipe = meta.get("default_recipe")
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
         else:
             existing = Project(name=project_name, default_recipe=meta.get("default_recipe"))
             session.add(existing)

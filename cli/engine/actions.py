@@ -110,11 +110,39 @@ class Actions:
         
         merge(self.engine.context, data)
 
-    def config(self, args):
+    def config(self, args, options=None):
         """Handle configuration schema"""
         # args: dict of variable definitions
         schema = dict(args)
         self.config_call_count += 1
+        
+        # Check for template option
+        if options:
+            options = dict(options)
+            template_name = options.get("template")
+            if template_name and self.engine.mode == "GENERATE_CONFIG":
+                 # Resolve template
+                 proj_name = None
+                 tmpl_name = template_name
+                 if "::" in template_name:
+                    proj_name, tmpl_name = template_name.split("::")
+                 
+                 from cli.db.session import get_session
+                 from cli.db.models import Template, Project
+                 from sqlmodel import select
+                 
+                 with get_session() as session:
+                    query = select(Template).where(Template.name == tmpl_name)
+                    if proj_name:
+                        proj = session.exec(select(Project).where(Project.name == proj_name)).first()
+                        if proj:
+                             query = query.where(Template.project_id == proj.id)
+                    
+                    tmpl_obj = session.exec(query).first()
+                    if tmpl_obj:
+                         self.engine.config_template = tmpl_obj.content
+                    else:
+                         console.print(f"[red]Config template '{template_name}' not found. Falling back to default generation.[/red]")
 
         # Heuristic to find the correct r.config block in the script
         # We search for r.config to preserve order of keys for TOML generation
