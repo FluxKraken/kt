@@ -8,7 +8,8 @@ from cli.utils.bundler import init_bundle_structure
 
 @click.command("init")
 @click.argument("path", required=False) # For project init in path
-def init_cmd(path):
+@click.option("--set-default", help="Set a default recipe for the project")
+def init_cmd(path, set_default):
     """Initializes a new project (or DB if no path)."""
     # Original init was for DB. Proposal says:
     # "Instead of an explicit init command to initialize the database, this should be done automatically... The init command will be used to initialize a new project instead."
@@ -24,7 +25,7 @@ def init_cmd(path):
     
     # Initialize standard project structure (project.json, templates, recipes, assets)
     try:
-        init_bundle_structure(path)
+        init_bundle_structure(path, default_recipe=set_default)
         click.echo(f"Initialized scaffolding for project at {path}")
     except Exception as e:
         click.echo(f"Error initializing project structure: {e}")

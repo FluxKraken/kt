@@ -278,7 +278,7 @@ def bundle_path_to_archive(source_path: str, output_path: str, overwrite: bool =
             # We want to add it under a folder named project_name
             tar.add(s, arcname=os.path.join(project_name, item))
 
-def init_bundle_structure(target_path: str):
+def init_bundle_structure(target_path: str, default_recipe: str = None):
     """
     Initialize a project structure with example files.
     """
@@ -293,7 +293,10 @@ def init_bundle_structure(target_path: str):
     proj_json_path = os.path.join(target_path, "project.json")
     if not os.path.exists(proj_json_path):
         with open(proj_json_path, 'w') as f:
-            json.dump({"name": project_name, "version": "0.1.0"}, f, indent=4)
+            data = {"name": project_name, "version": "0.1.0"}
+            if default_recipe:
+                data["default_recipe"] = default_recipe
+            json.dump(data, f, indent=4)
             
     # Folders
     for folder in ["templates", "recipes", "assets"]:
