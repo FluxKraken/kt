@@ -22,10 +22,12 @@ from cli.commands.assign_cmd import assign_cmd
 from cli.commands.unassign_cmd import unassign_cmd
 from cli.commands.delete_cmd import delete_cmd
 from cli.commands.edit_cmd import edit_cmd
+from cli.commands.list_cmd import list_cmd
 
 # Register commands
 kt.add_command(r_cmd, name="r")
 kt.add_command(import_cmd, name="import")
+kt.add_command(list_cmd, name="list") # Added list command
 kt.add_command(init_cmd, name="init")
 kt.add_command(bundle)
 kt.add_command(new_cmd, name="new")

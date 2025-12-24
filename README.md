@@ -101,6 +101,14 @@ After installing, you can invoke the CLI via `kt`.
 
   _Alternatively using import_: `kt import --bundle ./starter.project` (Imports into DB)
 
+- **List resources**:
+
+  ```bash
+  kt list --type project
+  kt list --type recipe --project my-stack
+  kt list --type template # Lists unassigned templates
+  ```
+
 ## Documentation
 
 - [User Guide](docs/user_guide.md): CLI walkthroughs, end-to-end flows, and bundling tips.
