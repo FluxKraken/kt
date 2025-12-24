@@ -291,7 +291,20 @@ def init_bundle_structure(target_path: str, default_recipe: str = None):
         
     # project.json
     proj_json_path = os.path.join(target_path, "project.json")
-    if not os.path.exists(proj_json_path):
+    proj_json_path = os.path.join(target_path, "project.json")
+    if os.path.exists(proj_json_path):
+        if default_recipe:
+            with open(proj_json_path, 'r') as f:
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError:
+                    data = {} # Should be error but let's try to preserve
+            
+            data["default_recipe"] = default_recipe
+            
+            with open(proj_json_path, 'w') as f:
+                json.dump(data, f, indent=4)
+    else:
         with open(proj_json_path, 'w') as f:
             data = {"name": project_name, "version": "0.1.0"}
             if default_recipe:
