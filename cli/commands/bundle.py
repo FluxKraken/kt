@@ -6,57 +6,39 @@ from cli.utils.bundler import expand_bundle_to_path, bundle_path_to_archive, ini
 
 console = Console()
 
-@click.group()
-def bundle():
-    """Bundle projects to/from .project archives"""
-    pass
-
-@bundle.command("init")
-@click.argument("path", default=".")
-def init(path):
-    """Initialize a project bundle structure"""
-    try:
-        init_bundle_structure(path)
-        console.print(f"[green]Successfully initialized bundle project at '{path}'.[/green]")
-    except Exception as e:
-        console.print(f"[red]Error initializing bundle project: {e}[/red]")
-
-@bundle.command("expand")
-@click.argument("bundle_path")
-@click.argument("extract_path")
-@click.option("--overwrite", is_flag=True, help="Overwrite existing files")
-def expand(bundle_path, extract_path, overwrite):
-    """Expand a .project archive to a path"""
-    try:
-        expand_bundle_to_path(bundle_path, extract_path, overwrite)
-        console.print(f"[green]Successfully expanded '{bundle_path}' to '{extract_path}'.[/green]")
-    except Exception as e:
-        console.print(f"[red]Error expanding bundle: {e}[/red]")
-
-@bundle.command("create")
-@click.argument("source_path", default=".")
-@click.option("-f", "--file", "output_path", help="Output .project file path")
-@click.option("--overwrite", is_flag=True, help="Overwrite existing file")
-def create(source_path, output_path, overwrite):
-    """Create a .project archive from a path"""
-    try:
-        if not output_path:
-            # Default output path is cwd / project_name.project
-            # Get project name from project.json if exists
-            proj_json = os.path.join(source_path, "project.json")
-            if os.path.exists(proj_json):
-                with open(proj_json, 'r') as f:
-                    meta = json.load(f)
-                    project_name = meta.get("name")
-            else:
-                project_name = os.path.basename(os.path.abspath(source_path))
+@click.command("bundle")
+@click.argument("path", required=False, default=".")
+@click.option("--destination", help="Destination path for the bundle archive")
+@click.option("--overwrite", is_flag=True, help="Overwrite existing bundle")
+def bundle(path, destination, overwrite):
+    """Bundles the project at the specified path."""
+    # Proposal: bundle [path] --destination [destination_path]
+    # "The *.project file will be output to the destination path."
+    
+    if not destination:
+        # Infer destination from path or project.json
+        proj_json = os.path.join(path, "project.json")
+        if os.path.exists(proj_json):
+            with open(proj_json, 'r') as f:
+                meta = json.load(f)
+                project_name = meta.get("name")
+        else:
+            project_name = os.path.basename(os.path.abspath(path))
+        
+        if not project_name:
+            project_name = "project"
             
-            if not project_name:
-                project_name = "project"
-            
-            output_path = os.path.join(os.getcwd(), f"{project_name}.project")
-
-        bundle_path_to_archive(source_path, output_path, overwrite)
-        console.print(f"[green]Successfully created bundle '{output_path}' from '{source_path}'.[/green]")
+        # Default to ../project_name.project relative to the project path? 
+        # Or in current cwd?
+        # Proposal example: kt bundle . --destination ../svelte.project
+        # If no destination, usually bundling in place or parent is weird.
+        # Let's default to cwd / name.project
+        destination = os.path.join(os.getcwd(), f"{project_name}.project")
+        
+    try:
+        from cli.utils.bundler import bundle_path_to_archive
+        bundle_path_to_archive(path, destination, overwrite)
+        console.print(f"[green]Successfully bundled '{path}' to '{destination}'.[/green]")
     except Exception as e:
-        console.print(f"[red]Error creating bundle: {e}[/red]")
+        console.print(f"[red]Error bundling project: {e}[/red]")
+
