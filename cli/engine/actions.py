@@ -473,7 +473,7 @@ class Actions:
     def eval(self, command):
         """Run shell command and return stdout"""
         # command is a string
-        if self.engine.mode == "GENERATE_CONFIG": return ""
+
         
         try:
             # We use shell=True to support pipes etc if needed, be careful with security but this is a dev tool
