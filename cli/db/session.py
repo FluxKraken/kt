@@ -15,4 +15,5 @@ def init_db():
     SQLModel.metadata.create_all(engine)
 
 def get_session():
+    init_db()
     return Session(engine)
