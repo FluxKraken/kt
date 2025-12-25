@@ -291,7 +291,6 @@ def init_bundle_structure(target_path: str, default_recipe: str = None):
         
     # project.json
     proj_json_path = os.path.join(target_path, "project.json")
-    proj_json_path = os.path.join(target_path, "project.json")
     if os.path.exists(proj_json_path):
         if default_recipe:
             with open(proj_json_path, 'r') as f:
