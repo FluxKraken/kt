@@ -9,7 +9,7 @@ console = Console()
 
 @click.command("r")
 @click.argument("name", required=False)
-@click.option("--config", help="TOML config file")
+@click.option("--config", help="TOML or YAML config file")
 @click.option("--create-config", help="Path to create a new config file")
 @click.option("--output", help="Output path for generated config (deprecated, use --create-config)")
 @click.option(
@@ -23,6 +23,7 @@ console = Console()
 def r_cmd(name, config, create_config, output, config_format):
     """Executes the default recipe for the specified project."""
     import toml
+    import yaml
     import json
     from cli.engine.core import RecipeEngine
 
@@ -99,7 +100,13 @@ def r_cmd(name, config, create_config, output, config_format):
             if not os.path.exists(config):
                 console.print(f"[red]Config file '{config}' not found.[/red]")
                 return
-            context = toml.load(config)
+            _, ext = os.path.splitext(config)
+            ext = ext.lower()
+            if ext in (".yaml", ".yml"):
+                with open(config, "r") as config_file:
+                    context = yaml.safe_load(config_file) or {}
+            else:
+                context = toml.load(config)
             
         mode = "EXECUTE"
         if create_config and not config:
