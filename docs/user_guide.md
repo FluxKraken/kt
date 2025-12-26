@@ -1,175 +1,395 @@
 # kt User Guide
 
-`kt` is a project-oriented scaffolding system. It stores templates, recipes, and assets in a lightweight SQLite database and exposes a Click-based CLI to compose them into project skeletons.
+This guide covers how to install `kt`, organize projects, and use every CLI feature. If you’re brand new to `kt`, start with the tutorial.
 
-## Core Concepts
+## Table of contents
 
-- **Project** — A namespace that groups templates, recipes, and assets (e.g., `sveltekit`, `fastapi`).
-- **Template** — A Jinja2 text template rendered to files. Supports `{>command<}` blocks that execute shell commands at render time.
-- **Recipe** — A Lua script that collects input, renders templates, copies assets, and runs commands.
-- **Asset** — A binary or text file copied verbatim (images, fonts, binaries).
-- **Bundle** — A `.project` tarball that contains a project, its recipes, templates, and assets.
+- [Concepts](#concepts)
+- [Installation](#installation)
+- [Where data lives](#where-data-lives)
+- [Beginner tutorial](#beginner-tutorial)
+- [Templates](#templates)
+- [Assets](#assets)
+- [Recipes](#recipes)
+- [Bundles and on-disk projects](#bundles-and-on-disk-projects)
+- [Command reference](#command-reference)
 
-## Installation & Setup
+## Concepts
+
+`kt` manages four core resource types:
+
+- **Project**: A namespace that groups templates, recipes, and assets.
+- **Template**: A Jinja2 file stored in the database.
+- **Recipe**: A Lua script that can prompt, render templates, copy assets, and run commands.
+- **Asset**: A binary or text file stored in the database.
+
+`kt` can also work with **on-disk projects**: a folder containing `project.json`, `templates/`, `recipes/`, and `assets/`.
+
+## Installation
+
+`kt` is distributed as a Python CLI (requires Python 3.14+).
 
 ```bash
 uv tool install https://github.com/FluxKraken/kt.git
-kt --help   # verify installation
+kt --help
 ```
 
-> **Tip:** All commands accept `--help` for on-demand usage details.
+## Where data lives
 
-## Project Management
+`kt` stores its SQLite database in your OS-specific app data directory:
 
-Projects keep resources scoped and organized.
+- Path is `click.get_app_dir("kt")/kt.db`
+- The directory is created on first run
+
+## Beginner tutorial
+
+This tutorial shows a full flow: create a project, add a template and recipe, generate a config file, and scaffold files.
+
+### 1. Create a project
 
 ```bash
-# List existing projects
-kt project list
-
-# Create a project namespace
-kt new --project my-stack
-
-# Delete a project (use --recursive to remove its resources)
-kt delete --project my-stack --recursive
+kt new --project hello
 ```
 
-### Importing & Exporting Projects
+### 2. Create a template
 
-- **Import from bundle**: `kt import --bundle ./starter.project --overwrite`
-- **Import from folder**: `kt import --dir ./starter-folder --overwrite`
-- **Export to bundle**: `kt bundle ./ --destination ./my-stack.project`
+Create a template file on disk:
 
-> Bundles are tar.gz archives. They keep file names and project metadata so you can rehydrate a stack elsewhere.
+`app.j2`
+```jinja
+from fastapi import FastAPI
 
-## Working with Templates
+app = FastAPI()
 
-Templates are Jinja2 files. `kt` can pre-compute missing variables and prompt you via your editor.
+@app.get("/")
+def read_root():
+    return {"name": "{{ app.name }}", "port": {{ app.port }}}
+```
 
-Common flows:
+Import it into `kt`:
 
 ```bash
-# List templates (unscoped or within a project)
-kt template --project my-stack
-
-# Add a template (creates a new empty one)
-kt new --template service --project my-stack
-
-# Import an existing file as a template
-kt import --template ./service.j2 --project my-stack --name service
-
-# Generate a config skeleton for required variables
-kt template service --project my-stack --create-config ./service.defaults.toml
-
-# Render to disk (prompts for missing values if needed)
-kt template service --project my-stack --destination ./build/service.py
+kt import --template app --file ./app.j2 --project hello
 ```
 
-Shell command blocks allow dynamic content:
+### 3. Create a recipe
+
+`scaffold.lua`
+```lua
+r.config({
+  app = {
+    name = { default = "hello-service" },
+    port = { default = 8000 }
+  }
+})
+
+r.mkdir("$(app.name)", { parents = true })
+
+r.template("hello::app", {
+  destination = r.f("$(app.name)/main.py"),
+  context = {
+    app = {
+      name = r.ref("app.name"),
+      port = r.ref("app.port")
+    }
+  }
+})
+```
+
+Import it and set it as the default recipe:
+
+```bash
+kt import --recipe scaffold --file ./scaffold.lua --project hello
+kt recipe scaffold --project hello --set-default
+```
+
+### 4. Generate a config file
+
+```bash
+kt r hello --create-config ./config.toml
+$EDITOR ./config.toml
+```
+
+### 5. Execute the recipe
+
+```bash
+kt r hello --config ./config.toml
+```
+
+You should now have a `hello-service/main.py` generated from the template.
+
+## Templates
+
+Templates are stored in the database and rendered via Jinja2. You can also run shell commands inside templates using `{>command<}` tags.
+
+Example template:
 
 ```jinja
 SECRET_KEY = "{>openssl rand -base64 32<}"
-GIT_REMOTE = "{>git config --get remote.origin.url<}"
+PROJECT = "{{ project.name }}"
 ```
 
-> **Security warning:** `{>command<}` blocks run with `shell=True`. Only render trusted templates.
-
-## Working with Recipes
-
-Recipes orchestrate prompting, templating, and execution. Each recipe can either **generate config** or **execute** depending on the flags you pass.
+Render a template:
 
 ```bash
-# List or import recipes
-kt recipe --project my-stack
-kt import --recipe ./init.lua --project my-stack --name init
-
-# Generate a TOML config file from prompts
-kt r init --project my-stack --create-config ./config.toml
-
-# Execute using a prepared config
-kt r init --project my-stack --config ./config.toml
+kt template app --project hello --destination ./output/app.py
 ```
 
-Quick sample recipe (Lua):
-
-```lua
-r.prompt({
-  project = { name = { default = "my-service" } },
-  features = { telemetry = { default = true } }
-})
-
-r.template("my-stack::service", {
-  output = r.f("$(project.name)/service.py"),
-  context = { telemetry = r.ref("features.telemetry") }
-})
-
-r.command({ check = "features.telemetry" }, function()
-  r.run({ "bash", "-lc", r.f("cd $(project.name) && ./enable-telemetry.sh") })
-end)
-```
-
-- `r.prompt` writes defaults to the config (or opens your editor in execute mode if values are missing).
-- `r.template` renders a template to disk with the provided context.
-- `r.command` conditionally runs shell actions (`check` looks up a boolean in the context).
-
-## Working with Assets
-
-Assets keep non-text resources alongside templates.
+Generate a config skeleton for template variables:
 
 ```bash
-# List assets
-kt asset --project my-stack
-
-# Add a binary asset
-kt import --asset ./logo.png --project my-stack --name logo
-
-# Use assets in recipes
-r.assets("my-stack::logo", { destination = r.f("$(project.name)/public/logo.png") })
+kt template app --project hello --create-config ./template.toml
 ```
 
-## Bundling & Sharing
+## Assets
 
-Bundles pack everything needed to rehydrate a stack.
+Assets are binary or text files stored in the database. Recipes can copy assets into generated projects.
+
+Import and copy an asset:
 
 ```bash
-# Initialize a new project structure (optional)
+kt import --asset logo --file ./logo.png --project hello
+kt asset logo --project hello --destination ./build/logo.png
+```
+
+## Recipes
+
+Recipes are Lua scripts that use the `r` API. They can:
+
+- declare defaults (`r.config`, `r.declare`)
+- prompt (`r.question`, `r.confirm`)
+- render templates (`r.template`)
+- copy assets (`r.asset`)
+- run commands (`r.run`, `r.eval`)
+- manage files and directories (`r.touch`, `r.mkdir`, `r.delete`)
+- call other recipes (`r.recipe`)
+
+See the full [Recipe API](recipe_api.md) for every method and options.
+
+## Bundles and on-disk projects
+
+`kt` supports bundling projects in two ways:
+
+- **Database projects**: Export a database project into a `.project` archive.
+- **On-disk projects**: Bundle a folder that contains `project.json`, `templates/`, `recipes/`, and `assets/`.
+
+Initialize a new on-disk project structure:
+
+```bash
 kt init ./starter
+```
 
-# Create a .project archive from a folder
+This creates:
+
+```
+starter/
+  project.json
+  templates/
+  recipes/
+  assets/
+  misc/
+```
+
+To bundle an on-disk project:
+
+```bash
 kt bundle ./starter --destination ./starter.project
-
-# Import a received .project archive
-kt import --bundle ./starter.project --overwrite
 ```
 
-## End-to-End Example
-
-1. Create project & import resources:
+To import a bundle into the database:
 
 ```bash
-kt project add flask-app
-kt template import ./app.j2 --project flask-app --name app
-kt asset add logo --file ./logo.png --project flask-app
-kt recipe import ./scaffold.lua --project flask-app --name scaffold
+kt import --bundle ./starter.project
 ```
 
-2. Generate config, edit, then execute:
+## Command reference
+
+### `kt list`
+
+Show a summary of unassigned resources and projects:
 
 ```bash
-kt recipe render scaffold --project flask-app --output ./flask-config.toml
-${EDITOR:-vi} ./flask-config.toml
-kt recipe render scaffold --project flask-app --config ./flask-config.toml
+kt list
 ```
 
-3. Share it:
+List a specific resource type:
 
 ```bash
-kt project export flask-app --output ./flask-app.project
+kt list --type project
+kt list --type template --project hello
+kt list --type recipe --project hello
+kt list --type asset --project hello
 ```
 
-## Troubleshooting & Tips
+### `kt project`
 
-- **Editor prompts**: Commands that open your editor respect `$EDITOR` and `$VISUAL`. Set one if you prefer a specific editor.
-- **Overwrites**: Most commands default to safety. Pass `--overwrite` to replace existing files or DB entries.
-- **Database location**: The SQLite file lives at `click.get_app_dir("kt")/kt.db` (platform-specific app data path).
-- **Show help**: `kt <command> --help` prints options and subcommands (e.g., `kt template render --help`).
+Manage projects stored in the database.
+
+```bash
+kt project list
+kt project add hello
+kt project delete hello --recursive
+```
+
+Set a default recipe:
+
+```bash
+kt project default hello --recipe scaffold
+```
+
+Render a project’s default recipe:
+
+```bash
+kt project render hello --output ./config.toml
+kt project render hello --config ./config.toml
+```
+
+Import or export a project:
+
+```bash
+kt project import ./starter.project
+kt project import ./starter --overwrite
+kt project import https://example.com/repo.git --git
+
+kt project export hello --output ./hello.project
+```
+
+Unassign resources from a project:
+
+```bash
+kt project unassign hello --template app
+```
+
+### `kt new`
+
+Create new empty resources in the database:
+
+```bash
+kt new --project hello
+kt new --template app --project hello
+kt new --recipe scaffold --project hello
+kt new --asset logo --project hello
+```
+
+### `kt import`
+
+Import resources into the database:
+
+```bash
+kt import --template app --file ./app.j2 --project hello
+kt import --recipe scaffold --file ./scaffold.lua --project hello
+kt import --asset logo --file ./logo.png --project hello
+```
+
+Import a project from a bundle, directory, or Git repository:
+
+```bash
+kt import --bundle ./starter.project
+kt import --dir ./starter --overwrite
+kt import --git https://example.com/repo.git
+```
+
+### `kt edit`
+
+Edit recipes or templates in your `$EDITOR`:
+
+```bash
+kt edit --recipe scaffold --project hello
+kt edit --template app --project hello
+```
+
+### `kt assign` and `kt unassign`
+
+Assign or unassign resources to/from projects:
+
+```bash
+kt assign --template app --project hello
+kt unassign --recipe scaffold --project hello
+```
+
+### `kt delete`
+
+Delete a resource or project:
+
+```bash
+kt delete --template app --project hello
+kt delete --project hello --recursive
+```
+
+### `kt template`
+
+List templates or render one to disk:
+
+```bash
+kt template --project hello
+kt template app --project hello --destination ./output/app.py
+kt template app --project hello --create-config ./template.toml
+```
+
+### `kt asset`
+
+List assets or copy one to disk:
+
+```bash
+kt asset --project hello
+kt asset logo --project hello --destination ./output/logo.png
+```
+
+### `kt recipe`
+
+List recipes, execute one, or generate a config file:
+
+```bash
+kt recipe --project hello
+kt recipe scaffold --project hello --create-config ./config.toml
+kt recipe scaffold --project hello --config ./config.toml
+```
+
+Set the default recipe for a project:
+
+```bash
+kt recipe scaffold --project hello --set-default
+```
+
+Generate config files in YAML:
+
+```bash
+kt recipe scaffold --project hello --create-config ./config.yaml --format yaml
+```
+
+### `kt r`
+
+Execute the default recipe for a project:
+
+```bash
+kt r hello --create-config ./config.toml
+kt r hello --config ./config.toml
+```
+
+If run inside an on-disk project (folder with `project.json`), you can omit the project name:
+
+```bash
+kt r --create-config ./config.toml
+```
+
+### `kt init`
+
+Initialize an on-disk project structure:
+
+```bash
+kt init ./starter
+kt init ./starter --set-default scaffold
+```
+
+### `kt bundle`
+
+Bundle an on-disk project into a `.project` archive:
+
+```bash
+kt bundle ./starter --destination ./starter.project
+```
+
+## Safety notes
+
+- `{>command<}` template tags and `r.eval` execute shell commands. Only use trusted templates and recipes.
+- Recipe `r.run` executes commands directly and will fail the recipe if the command exits non-zero.

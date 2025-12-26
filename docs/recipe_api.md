@@ -1,136 +1,181 @@
 # Recipe API Reference
 
-Recipes in `kt` are Lua scripts. The engine exposes a single global table `r` with helpers for collecting input, rendering templates, copying assets, and running commands.
+Recipes are Lua scripts executed by `kt`. Each recipe is given a global `r` table that provides helpers for prompts, templates, assets, filesystem actions, and commands.
 
-> **Execution modes:** `kt r ... --create-config` runs in **GENERATE_CONFIG** mode (defaults only, no side effects). Supplying `--config` switches to **EXECUTE** mode (runs commands, writes files).
+## Execution modes
 
-## Quick Cheat Sheet
+Recipes run in one of two modes:
 
-- `r.declare` — Seed context with defaults.
-- `r.config` — Define configuration schema and defaults.
-- `r.question` — Prompt user for text input.
-- `r.confirm` — Prompt user for yes/no confirmation.
-- `r.template` — Render a Jinja2 template to disk.
-- `r.asset` — Copy a stored asset to disk.
-- `r.eval` — Execute a command and capture output.
-- `r.run` — Execute a command (`cmd`, `args`, `cwd`).
-- `r.touch` — Create a file with optional content.
-- `r.mkdir` — Create directories (optionally with parents).
-- `r.delete` — Delete a file or directory recursively.
-- `r.f` / `r.ref` / `r.splice` — Formatting and lookups.
+- **GENERATE_CONFIG**: Used when you run `kt recipe ... --create-config`, `kt r ... --create-config`, or `kt project render ... --create-config`. Recipes do not write files or run commands in this mode. Defaults from `r.config` are collected into a config file.
+- **EXECUTE**: Used when you pass `--config` or run without `--create-config`. Templates are rendered, assets copied, and commands executed.
 
-## Core Methods (with examples)
+## Context and interpolation
 
-### `r.declare(table)`
+- `r.config` and `r.declare` populate the recipe context.
+- `r.ref("path.to.value")` reads from the context.
+- `r.f("$(path.to.value)/file.txt")` interpolates values into strings using `$(...)` syntax.
 
-Declare initial variables. Useful for defaults that should exist even before prompting.
+## API overview
+
+- `r.declare(table)`
+- `r.config(table, options)`
+- `r.question(table)`
+- `r.confirm(table)`
+- `r.template(name, table)`
+- `r.asset(name, table)`
+- `r.recipe(name)`
+- `r.run(args, options)`
+- `r.eval(command)`
+- `r.touch(path, options)`
+- `r.mkdir(path, options)`
+- `r.delete(path)`
+- `r.f(string)`
+- `r.ref(path)`
+- `r.splice(path)`
+
+## `r.declare(table)`
+
+Merge values into the recipe context. This is helpful for defaults that should always exist.
 
 ```lua
 r.declare({
-  service = { name = "my-api", port = 8080 },
-  dependencies = { prod = { "flask", "requests" } }
+  project = { name = "demo", port = 8080 },
+  dependencies = { prod = { "fastapi", "uvicorn" } }
 })
 ```
 
-### `r.config(table)`
+## `r.config(table, options)`
 
-Define configuration schema and defaults. Used for `kt r ... --create-config` to generate TOML.
+Define configuration defaults. The structure becomes the generated config file when running in `--create-config` mode.
 
-- `default`: Value written to the config file.
-- `_comment`: A description that appears above the key in the generated TOML.
+- Every leaf node is defined by `{ default = <value> }`
+- Nested tables group related config
+
+Example:
 
 ```lua
 r.config({
   project = {
-    name = { default = "My Project" },
-    version = { default = "0.1.0" }
+    name = { default = "my-service" },
+    port = { default = 8000 }
   },
-  db = {
-    _comment = "Database settings",
-    host = { default = "localhost" },
-    port = { default = 5432 }
+  features = {
+    telemetry = { default = true }
   }
 })
 ```
 
-### `r.question(table)`
+Optional `options`:
 
-Ask the user for text input.
-
-- `prompt`: Question text.
-- `default`: Default value if user presses Enter.
-- `store`: Context key to persist the answer.
+- `template`: a template name or `project::template` to render the config file via Jinja2 instead of default TOML/YAML output.
 
 ```lua
-local name = r.question({ prompt = "What is your name?", default = "User", store = "user.name" })
+r.config({
+  project = { name = { default = "example" } }
+}, { template = "starter::config" })
 ```
 
-### `r.confirm(table)`
+## `r.question(table)`
 
-Ask for a yes/no confirmation.
+Prompt the user for a text value. In `GENERATE_CONFIG` mode it returns the default (or an empty string).
 
-- `prompt`: Question text.
-- `default`: Default boolean (optional, defaults to `false`).
-- `store`: Context key to persist the answer.
+Fields:
+
+- `prompt`: prompt text
+- `default`: default value
+- `store`: a context key to store the result
 
 ```lua
-if r.confirm({ prompt = "Initialize Git?", store = "use_git", default = true }) then
+local author = r.question({
+  prompt = "Author name",
+  default = "Unknown",
+  store = "author"
+})
+```
+
+## `r.confirm(table)`
+
+Prompt for confirmation. In `GENERATE_CONFIG` mode it returns the default.
+
+Fields:
+
+- `prompt`: prompt text
+- `default`: boolean (defaults to `false`)
+- `store`: a context key to store the result
+
+```lua
+if r.confirm({ prompt = "Initialize Git?", default = true, store = "git" }) then
   r.run({ "git", "init" })
 end
 ```
 
-### `r.template(name, table)`
+## `r.template(name, table)`
 
-Render a stored Jinja2 template to a file.
+Render a stored template to disk.
 
-Parameters:
-
-- `destination` (required): Target path.
-- `overwrite` (bool): Replace existing file (default: `false`).
-- `context` (table): Values available to the template.
+- `name`: `template` or `project::template`
+- `destination`: output path (required)
+- `overwrite`: overwrite existing file (default `false`)
+- `context`: template context overrides
 
 ```lua
-r.template("flask::app", {
+r.template("starter::app", {
   destination = r.f("$(project.name)/app.py"),
   overwrite = true,
-  context = {
-    name = r.ref("project.name"),
-    db_port = r.ref("db.port")
-  }
+  context = { project = { name = r.ref("project.name") } }
 })
 ```
 
-### `r.asset(name, table)`
+## `r.asset(name, table)`
 
-Copy a binary/text asset.
+Copy an asset from the database to disk.
 
-- `destination` (required): Where to write the file.
-- `overwrite` (bool): Replace if present.
+- `name`: `asset` or `project::asset`
+- `destination`: output path (required)
+- `overwrite`: overwrite existing file (default `false`)
 
 ```lua
-r.asset("flask::logo", {
+r.asset("starter::logo", {
   destination = r.f("$(project.name)/public/logo.png"),
   overwrite = true
 })
 ```
 
-### `r.run(args, options)`
+## `r.recipe(name)`
 
-Run a subprocess.
-
-- `args`: Array of command tokens (Lua table, numeric keys).
-- `options`: Optional table. Currently supports `cwd`.
+Execute another stored recipe by name:
 
 ```lua
-r.run({ "npm", "install" }, { cwd = r.f("$(project.name)") })
+r.recipe("starter::init")
 ```
 
-### `r.touch(path, options)`
+## `r.run(args, options)`
+
+Run a subprocess. Skipped in `GENERATE_CONFIG` mode.
+
+- `args`: list of command arguments
+- `options.cwd`: working directory
+
+```lua
+r.run({ "python", "-m", "venv", ".venv" })
+r.run({ "git", "init" }, { cwd = r.f("$(project.name)") })
+```
+
+## `r.eval(command)`
+
+Run a shell command and return its stdout. Useful for computed values.
+
+```lua
+local secret = r.eval("openssl rand -base64 32")
+r.touch(".env", { content = "SECRET=" .. secret, overwrite = true })
+```
+
+## `r.touch(path, options)`
 
 Create a file with optional content.
 
-- `content`: String (supports `$(...)` substitutions via `r.f` inside the value).
-- `overwrite`: Replace if present.
+- `content`: file contents (supports `$(...)` substitutions)
+- `overwrite`: overwrite existing file (default `false`)
 
 ```lua
 r.touch("$(project.name)/README.md", {
@@ -139,89 +184,70 @@ r.touch("$(project.name)/README.md", {
 })
 ```
 
-### `r.mkdir(path, options)`
+## `r.mkdir(path, options)`
 
 Create a directory.
 
-- `parents`: Create intermediate directories (like `mkdir -p`).
+- `parents`: create intermediate directories (like `mkdir -p`)
 
 ```lua
 r.mkdir("$(project.name)/src", { parents = true })
 ```
 
-### `r.delete(path)`
+## `r.delete(path)`
 
-Delete a file or directory recursively. Path interpolation requires explicit `r.f()`.
-
-- `path`: String path to delete.
+Delete a file or directory recursively.
 
 ```lua
--- Delete a single file
-r.delete("temp_file.txt")
-
--- Delete a directory recursively (using variable)
-r.delete(r.f("$(project.name)/temp_dir"))
+r.delete(r.f("$(project.name)/tmp"))
 ```
 
-### `r.eval(command)`
+## `r.f(string)`
 
-Execute a shell command and return the output.
-
-- `command`: String command to execute.
+Format strings using `$(path.to.value)` substitution.
 
 ```lua
-r.touch(r.f("$(project.location)/.secrets/LOAD_BETTER_AUTH_SECRET.txt"), {
-    content = r.eval("openssl rand -base64 32")
-})
+local path = r.f("$(project.name)/main.py")
 ```
 
-## Helper Methods
+## `r.ref(path)`
 
-- **`r.f(string)`** — Format using `$(var.path)` substitution from context.
-  ```lua
-  local path = r.f("$(project.name)/Dockerfile")
-  ```
-- **`r.ref(path)`** — Read a context value (returns `""` if missing).
-  ```lua
-  local port = r.ref("service.port")
-  ```
-- **`r.splice(path)`** — Return a list-like value suitable for spreading into commands.
-  ```lua
-  r.run({ "pip", "install", r.splice("dependencies.prod") })
-  ```
+Return a context value by dotted path. If missing, returns an empty string.
 
-## Putting It Together (mini recipe)
+```lua
+local port = r.ref("project.port")
+```
+
+## `r.splice(path)`
+
+Return a list from context, suitable for spreading into command arguments.
+
+```lua
+r.declare({ dependencies = { prod = { "rich", "toml" } } })
+r.run({ "pip", "install", r.splice("dependencies.prod") })
+```
+
+## Full example
 
 ```lua
 r.declare({
-   dependencies = { prod = { "click", "rich" } }
- })
+  dependencies = { prod = { "fastapi", "uvicorn" } }
+})
 
- r.config({
-   project = { name = { default = "demo-app" } },
-   python = { version = { default = "3.12" } }
- })
+r.config({
+  project = { name = { default = "demo-app" } },
+  python = { version = { default = "3.12" } }
+})
 
- r.mkdir("$(project.name)", { parents = true })
- r.template("demo::app", {
-   output = r.f("$(project.name)/app.py"),
-   context = { python_version = r.ref("python.version") }
- })
+r.mkdir("$(project.name)", { parents = true })
 
- if r.confirm({ prompt = "Create virtualenv?", default = true }) then
-   r.run({ "python", "-m", "venv", r.f("$(project.name)/.venv") })
-   r.run({ r.f("$(project.name)/.venv/bin/pip"), "install", r.splice("dependencies.prod") })
- end
-```
+r.template("demo::app", {
+  destination = r.f("$(project.name)/main.py"),
+  context = { python_version = r.ref("python.version") }
+})
 
-Generate a config:
-
-```bash
-kt r scaffold --project demo --create-config ./config.toml
-```
-
-Execute with filled config:
-
-```bash
-kt r scaffold --project demo --config ./config.toml
+if r.confirm({ prompt = "Create virtualenv?", default = true }) then
+  r.run({ "python", "-m", "venv", r.f("$(project.name)/.venv") })
+  r.run({ r.f("$(project.name)/.venv/bin/pip"), "install", r.splice("dependencies.prod") })
+end
 ```
