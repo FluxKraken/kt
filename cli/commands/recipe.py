@@ -13,10 +13,25 @@ console = Console()
 @click.option("--project", help="Project name")
 @click.option("--config", help="TOML config file")
 @click.option("--create-config", help="Path to create a new config file")
+@click.option(
+    "--format",
+    "config_format",
+    type=click.Choice(["toml", "yaml", "yml"], case_sensitive=False),
+    default="toml",
+    show_default=True,
+    help="Config format for generated files",
+)
 @click.option("--set-default", is_flag=True, help="Set as default recipe for the project")
-def recipe(name, project, config, create_config, set_default):
+def recipe(name, project, config, create_config, config_format, set_default):
     """Executes the specified recipe (or lists recipes if no name)."""
-    
+    ctx = click.get_current_context()
+    format_source = ctx.get_parameter_source("config_format")
+    format_specified = format_source == click.core.ParameterSource.COMMANDLINE
+
+    if format_specified and not create_config:
+        console.print("[red]--format requires --create-config.[/red]")
+        return
+
     with get_session() as session:
         # Project resolution
         project_id = None
@@ -110,17 +125,22 @@ def recipe(name, project, config, create_config, set_default):
         mode = "EXECUTE"
         if create_config and not config:
             mode = "GENERATE_CONFIG"
+        if format_specified and mode != "GENERATE_CONFIG":
+            console.print("[red]--format is only valid when generating a config file.[/red]")
+            return
             
         try:
             engine = RecipeEngine(context=context, mode=mode)
             engine.execute(rec.content)
             
             if mode == "GENERATE_CONFIG":
-                engine.render(create_config)
+                if engine.config_template and format_specified:
+                    console.print("[red]--format cannot be used when a config template is provided via r.config.[/red]")
+                    return
+                engine.render(create_config, output_format=config_format)
                 console.print(f"[green]Config generated at '{create_config}'[/green]")
             else:
                  console.print(f"[green]Recipe '{name}' executed.[/green]")
                  
         except Exception as e:
             console.print(f"[red]Error executing recipe: {e}[/red]")
-
