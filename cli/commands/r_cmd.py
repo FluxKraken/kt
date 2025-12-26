@@ -12,15 +12,30 @@ console = Console()
 @click.option("--config", help="TOML config file")
 @click.option("--create-config", help="Path to create a new config file")
 @click.option("--output", help="Output path for generated config (deprecated, use --create-config)")
-def r_cmd(name, config, create_config, output):
+@click.option(
+    "--format",
+    "config_format",
+    type=click.Choice(["toml", "yaml", "yml"], case_sensitive=False),
+    default="toml",
+    show_default=True,
+    help="Config format for generated files",
+)
+def r_cmd(name, config, create_config, output, config_format):
     """Executes the default recipe for the specified project."""
     import toml
     import json
     from cli.engine.core import RecipeEngine
 
+    ctx = click.get_current_context()
+    format_source = ctx.get_parameter_source("config_format")
+    format_specified = format_source == click.core.ParameterSource.COMMANDLINE
+
     # Handle deprecated output arg gracefully by mapping to create_config if not handled
     if output and not create_config:
         create_config = output
+    if format_specified and not create_config:
+        console.print("[red]--format requires --create-config (or --output).[/red]")
+        return
 
     recipe_content = None
     project_context = None
@@ -89,13 +104,19 @@ def r_cmd(name, config, create_config, output):
         mode = "EXECUTE"
         if create_config and not config:
             mode = "GENERATE_CONFIG"
+        if format_specified and mode != "GENERATE_CONFIG":
+            console.print("[red]--format is only valid when generating a config file.[/red]")
+            return
             
         try:
             engine = RecipeEngine(context=context, mode=mode)
             engine.execute(recipe_content)
             
             if mode == "GENERATE_CONFIG":
-                engine.render(create_config)
+                if engine.config_template and format_specified:
+                    console.print("[red]--format cannot be used when a config template is provided via r.config.[/red]")
+                    return
+                engine.render(create_config, output_format=config_format)
                 console.print(f"[green]Config generated at '{create_config}'[/green]")
             else:
                  console.print(f"[green]Project '{project_context}' rendered using default recipe.[/green]")

@@ -52,7 +52,7 @@ class RecipeEngine:
             traceback.print_exc()
             raise RuntimeError(f"Lua execution error: {e}")
 
-    def render(self, output_path: Optional[str] = None):
+    def render(self, output_path: Optional[str] = None, output_format: str = "toml"):
         """
         Finalize the recipe rendering process. 
         If mode is GENERATE_CONFIG, write the collected prompts to output_path.
@@ -95,11 +95,19 @@ class RecipeEngine:
                     f.write(rendered)
             else:
                 final_output = deep_filter(self.actions.collected_prompts, self.context)
-                
-                # Use toml.dump with OrderedDict support if possible
-                # Standard toml library supports OrderedDict if passed directly
-                with open(output_path, 'w') as f:
-                    toml.dump(final_output, f)
+                normalized_format = (output_format or "toml").lower()
+
+                if normalized_format == "toml":
+                    # Use toml.dump with OrderedDict support if possible
+                    # Standard toml library supports OrderedDict if passed directly
+                    with open(output_path, 'w') as f:
+                        toml.dump(final_output, f)
+                elif normalized_format in ("yaml", "yml"):
+                    import yaml
+                    with open(output_path, 'w') as f:
+                        yaml.safe_dump(final_output, f, sort_keys=False)
+                else:
+                    raise ValueError(f"Unsupported config format: {output_format}")
 
             return True
         return False

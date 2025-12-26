@@ -13,7 +13,8 @@ dependencies = [
     "click_aliases",
     "sqlmodel",
     "rich",
-    "toml"
+    "toml",
+    "pyyaml"
 ]
 
 [project.scripts]
